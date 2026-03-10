@@ -14,11 +14,11 @@ const navItems = [
   { href: "/dashboard", icon: LayoutDashboard, label: "Overview", section: "Main" },
   { href: "/dashboard/accounting", icon: Calculator, label: "AI Bookkeeping", section: "Main" },
   { href: "/dashboard/invoices", icon: FileText, label: "Invoices", section: "Main" },
+  { href: "/dashboard/intelligence", icon: TrendingUp, label: "AI Intelligence", section: "Main" },
   { href: "/dashboard/tax", icon: FileSpreadsheet, label: "Tax Filing", section: "Main" },
   { href: "/dashboard/reports", icon: BarChart3, label: "Reports", section: "Main" },
   { href: "/dashboard/customer-service", icon: MessageSquare, label: "AI Support", section: "Agents" },
-  { href: "/dashboard/enterprise", icon: TrendingUp, label: "Enterprise", section: "Agents" },
-  { href: "/dashboard/lending", icon: CreditCard, label: "Business Lending", section: "Agents" },
+  { href: "/dashboard/enterprise", icon: LineChart, label: "Strategic CFO", section: "Agents" },
   { href: "/dashboard/market-analysis", icon: LineChart, label: "Market Analyst", section: "Agents" },
 ];
 

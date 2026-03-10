@@ -65,31 +65,46 @@ def process_reports():
         embedding_function=embedding_func
     )
     
-    for pdf_file in REPORTS_DIR.glob("*.pdf"):
-        ticker = pdf_file.stem.split('_')[0]
-        report_id = pdf_file.stem
-        
-        # Check if already processed
-        existing = collection.get(ids=[f"{report_id}_chunk_0"])
-        if existing and existing['ids']:
-            print(f"Already processed: {pdf_file.name}")
-            continue
+    pdf_files = list(REPORTS_DIR.glob("*.pdf"))
+    print(f"Found {len(pdf_files)} PDF files in {REPORTS_DIR}")
+    
+    for pdf_file in pdf_files:
+        try:
+            # Filename format: {prefix}_{ticker}_{doc_key}.pdf
+            parts = pdf_file.stem.split('_')
+            ticker = parts[1] if len(parts) > 1 else "Unknown"
+            report_id = pdf_file.stem
             
-        print(f"Processing {pdf_file.name}...")
-        text = extract_text_from_pdf(pdf_file)
-        if not text:
-            continue
+            # Check if already processed
+            existing = collection.get(ids=[f"{report_id}_chunk_0"])
+            if existing and existing['ids']:
+                print(f"Already processed: {pdf_file.name}")
+                continue
+                
+            print(f"Processing {pdf_file.name} for {ticker}...")
+            text = extract_text_from_pdf(pdf_file)
+            if not text:
+                print(f"Warning: No text extracted from {pdf_file.name}")
+                continue
+                
+            chunks = chunk_text(text)
+            print(f"Created {len(chunks)} chunks for {pdf_file.name}")
             
-        chunks = chunk_text(text)
-        ids = [f"{report_id}_chunk_{i}" for i in range(len(chunks))]
-        metadatas = [{"ticker": ticker, "source": pdf_file.name} for _ in range(len(chunks))]
-        
-        collection.add(
-            documents=chunks,
-            metadatas=metadatas,
-            ids=ids
-        )
-        print(f"Added {len(chunks)} chunks for {ticker}")
+            # Process in sub-batches for Chroma adding (prevent giant transactions)
+            batch_size = 50
+            for i in range(0, len(chunks), batch_size):
+                batch_chunks = chunks[i:i + batch_size]
+                batch_ids = [f"{report_id}_chunk_{j}" for j in range(i, i + len(batch_chunks))]
+                batch_metadatas = [{"ticker": ticker, "source": pdf_file.name} for _ in range(len(batch_chunks))]
+                
+                collection.add(
+                    documents=batch_chunks,
+                    metadatas=batch_metadatas,
+                    ids=batch_ids
+                )
+            print(f"Successfully indexed {len(chunks)} chunks for {ticker}")
+        except Exception as e:
+            print(f"Critical error processing {pdf_file.name}: {e}")
 
 if __name__ == "__main__":
     process_reports()
