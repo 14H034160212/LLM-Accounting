@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>AWS Invoice</title>
+    <style>
+        body { font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; padding: 40px; color: #333; background: #fff; max-width: 800px; margin: 0 auto; }
+        .header { display: flex; justify-content: space-between; border-bottom: 2px solid #eaeded; padding-bottom: 20px; mb-20 }
+        .logo { font-size: 28px; font-weight: bold; color: #f90; }
+        .invoice-title { font-size: 24px; color: #555; text-align: right; }
+        .details { display: flex; justify-content: space-between; margin-top: 30px; margin-bottom: 40px; }
+        .bill-to, .invoice-info { font-size: 14px; line-height: 1.6; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 30px; }
+        th, td { border-bottom: 1px solid #ddd; padding: 12px; text-align: left; font-size: 14px; }
+        th { background-color: #f8f9fa; color: #555; text-transform: uppercase; font-size: 12px; }
+        .text-right { text-align: right; }
+        .totals { width: 300px; margin-left: auto; }
+        .total-row { display: flex; justify-content: space-between; padding: 8px 0; font-size: 14px; }
+        .total-row.grand { font-weight: bold; font-size: 18px; border-top: 2px solid #333; padding-top: 12px; }
+        .notes { font-size: 12px; color: #777; margin-top: 50px; border-top: 1px solid #eaeded; padding-top: 20px; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="logo">Amazon Web Services</div>
+        <div class="invoice-title">Tax Invoice<br><span style="font-size: 14px; color: #888;">Invoice #402938482</span></div>
+    </div>
+    
+    <div class="details">
+        <div class="bill-to">
+            <strong>Bill To:</strong><br>
+            Sydney Tech Pty Ltd<br>
+            Level 10, 100 George Street<br>
+            Sydney NSW 2000<br>
+            Australia
+        </div>
+        <div class="invoice-info text-right">
+            <strong>Invoice Date:</strong> 2025-06-03<br>
+            <strong>Due Date:</strong> 2025-06-18<br>
+            <strong>Account Number:</strong> 9384-2938-1029<br>
+            <strong>Currency:</strong> AUD
+        </div>
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Description</th>
+                <th class="text-right">Usage</th>
+                <th class="text-right">Amount (AUD)</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>AWS EC2 Computing Instances (ap-southeast-2)</td>
+                <td class="text-right">730 Hrs</td>
+                <td class="text-right">125.50</td>
+            </tr>
+            <tr>
+                <td>Amazon RDS Database Hosting</td>
+                <td class="text-right">1 Mo</td>
+                <td class="text-right">85.00</td>
+            </tr>
+            <tr>
+                <td>AWS S3 Storage Standard</td>
+                <td class="text-right">500 GB</td>
+                <td class="text-right">12.50</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <div class="totals">
+        <div class="total-row"><span>Subtotal:</span> <span>$223.00</span></div>
+        <div class="total-row"><span>GST (10%):</span> <span>$22.30</span></div>
+        <div class="total-row grand"><span>Total Amount Due:</span> <span>$245.30</span></div>
+    </div>
+
+    <div class="notes">
+        Amazon Web Services Australia Pty Ltd. ABN: 83 600 412 110<br>
+        Thank you for your business. Please remit payment by the due date.
+    </div>
+</body>
+</html>

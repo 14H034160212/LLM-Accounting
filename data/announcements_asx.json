@@ -1,0 +1,86 @@
+[
+    {
+        "ticker": "AMD",
+        "headline": "Annual Report 2025",
+        "date": "2026-03-09",
+        "pdf_link": "https://cdn-api.markitdigital.com/apiman-gateway/ASX/asx-research/1.0/file/2924-03065908-6A1315341&v=undefined"
+    },
+    {
+        "ticker": "TSK",
+        "headline": "Addendum to Annual Report",
+        "date": "2026-03-03",
+        "pdf_link": "https://cdn-api.markitdigital.com/apiman-gateway/ASX/asx-research/1.0/file/2924-03064078-6A1314635&v=undefined"
+    },
+    {
+        "ticker": "360",
+        "headline": "Form 10-K",
+        "date": "2026-03-03",
+        "pdf_link": "https://cdn-api.markitdigital.com/apiman-gateway/ASX/asx-research/1.0/file/2924-03063771-2A1657463&v=undefined"
+    },
+    {
+        "ticker": "B01",
+        "headline": "Annual Report to shareholders",
+        "date": "2026-03-03",
+        "pdf_link": "https://cdn-api.markitdigital.com/apiman-gateway/ASX/asx-research/1.0/file/2924-03063743-2A1657426&v=undefined"
+    },
+    {
+        "ticker": "VTS",
+        "headline": "VTS US Filing NCSR (Part 2)",
+        "date": "2026-03-02",
+        "pdf_link": "https://cdn-api.markitdigital.com/apiman-gateway/ASX/asx-research/1.0/file/2924-03063546-2A1657306&v=undefined"
+    },
+    {
+        "ticker": "NVU",
+        "headline": "Appendix 4E and Annual Report - 31 December 2025",
+        "date": "2026-02-27",
+        "pdf_link": "https://cdn-api.markitdigital.com/apiman-gateway/ASX/asx-research/1.0/file/2924-03063160-6A1314296&v=undefined"
+    },
+    {
+        "ticker": "HAL",
+        "headline": "Annual Report to shareholders",
+        "date": "2026-02-27",
+        "pdf_link": "https://cdn-api.markitdigital.com/apiman-gateway/ASX/asx-research/1.0/file/2924-03063019-2A1657014&v=undefined"
+    },
+    {
+        "ticker": "AVE",
+        "headline": "Annual Report 31 December 2025",
+        "date": "2026-02-27",
+        "pdf_link": "https://cdn-api.markitdigital.com/apiman-gateway/ASX/asx-research/1.0/file/2924-03062921-3A688446&v=undefined"
+    },
+    {
+        "ticker": "BBL",
+        "headline": "Full Year Statutory Accounts",
+        "date": "2026-02-27",
+        "pdf_link": "https://cdn-api.markitdigital.com/apiman-gateway/ASX/asx-research/1.0/file/2924-03062883-2A1656939&v=undefined"
+    },
+    {
+        "ticker": "IBX",
+        "headline": "FY25 Appendix 4E and Annual Report",
+        "date": "2026-02-27",
+        "pdf_link": "https://cdn-api.markitdigital.com/apiman-gateway/ASX/asx-research/1.0/file/2924-03062862-3A688435&v=undefined"
+    },
+    {
+        "ticker": "EXL",
+        "headline": "FY25 Appendix 4E and Annual Report",
+        "date": "2026-02-27",
+        "pdf_link": "https://cdn-api.markitdigital.com/apiman-gateway/ASX/asx-research/1.0/file/2924-03062827-3A688421&v=undefined"
+    },
+    {
+        "ticker": "PET",
+        "headline": "Full Year Statutory Accounts",
+        "date": "2026-02-27",
+        "pdf_link": "https://cdn-api.markitdigital.com/apiman-gateway/ASX/asx-research/1.0/file/2924-03062809-2A1656909&v=undefined"
+    },
+    {
+        "ticker": "DEM",
+        "headline": "2025 Appendix 4E and Annual Report",
+        "date": "2026-02-27",
+        "pdf_link": "https://cdn-api.markitdigital.com/apiman-gateway/ASX/asx-research/1.0/file/2924-03062708-6A1314119&v=undefined"
+    },
+    {
+        "ticker": "RIV",
+        "headline": "Annual Report to shareholders",
+        "date": "2026-02-27",
+        "pdf_link": "https://cdn-api.markitdigital.com/apiman-gateway/ASX/asx-research/1.0/file/2924-03062700-2A1656855&v=undefined"
+    }
+]

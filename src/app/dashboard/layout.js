@@ -7,7 +7,7 @@ import {
   LayoutDashboard, Calculator, FileText, FileSpreadsheet,
   MessageSquare, TrendingUp, CreditCard, Bell, Settings,
   ChevronLeft, ChevronRight, Bot, Building2, LogOut,
-  Search, User, Moon, Sun, BarChart3
+  Search, User, Moon, Sun, BarChart3, LineChart
 } from "lucide-react";
 
 const navItems = [
@@ -19,6 +19,7 @@ const navItems = [
   { href: "/dashboard/customer-service", icon: MessageSquare, label: "AI Support", section: "Agents" },
   { href: "/dashboard/enterprise", icon: TrendingUp, label: "Enterprise", section: "Agents" },
   { href: "/dashboard/lending", icon: CreditCard, label: "Business Lending", section: "Agents" },
+  { href: "/dashboard/market-analysis", icon: LineChart, label: "Market Analyst", section: "Agents" },
 ];
 
 export default function DashboardLayout({ children }) {
@@ -31,9 +32,8 @@ export default function DashboardLayout({ children }) {
     <div className="flex h-screen bg-slate-50 overflow-hidden">
       {/* Sidebar */}
       <aside
-        className={`flex flex-col bg-slate-900 transition-all duration-300 flex-shrink-0 ${
-          collapsed ? "w-16" : "w-60"
-        }`}
+        className={`flex flex-col bg-slate-900 transition-all duration-300 flex-shrink-0 ${collapsed ? "w-16" : "w-60"
+          }`}
       >
         {/* Logo */}
         <div className={`flex items-center gap-3 px-4 py-5 border-b border-slate-800 ${collapsed ? "justify-center" : ""}`}>

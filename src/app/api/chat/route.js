@@ -1,3 +1,6 @@
+import { execSync } from "child_process";
+import path from "path";
+
 const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || "http://localhost:11434";
 const OLLAMA_MODEL = process.env.OLLAMA_MODEL || "qwen3:8b";
 
@@ -52,13 +55,40 @@ ${LANG_INSTRUCTION}`,
 Be clear and data-driven. Highlight rates, terms, and eligibility criteria.
 ${AU_NZ_CONTEXT}
 ${LANG_INSTRUCTION}`,
+
+  "market-analyst": `You are a expert Market Analyst AI for Australian (ASX) and New Zealand (NZX) public companies.
+Your role is to analyze annual reports and financial statements to provide deep insights into company performance, risks, and health.
+You have access to specific document excerpts (context) retrieved from recent annual reports.
+Use the provided context to answer questions accurately. If the information is not in the context, state that you don't have that specific detail but can provide general insights.
+Be analytical, objective, and precise. Use tables for financial comparisons where appropriate.
+${AU_NZ_CONTEXT}
+${LANG_INSTRUCTION}`,
 };
 
 export async function POST(req) {
   try {
     const { messages, role } = await req.json();
+    let currentSystemPrompt = systemPrompts[role] || systemPrompts.accounting;
+    const lastUserMessage = messages.filter(m => m.role === "user").pop()?.content || "";
 
-    const systemPrompt = systemPrompts[role] || systemPrompts.accounting;
+    // RAG Logic for Market Analyst
+    if (role === 'market-analyst' && lastUserMessage) {
+      try {
+        const queryScript = path.join(process.cwd(), "scripts", "query_vector.py");
+        const output = execSync(`python3 "${queryScript}" "${lastUserMessage.replace(/"/g, '\\"')}"`, { encoding: 'utf8' });
+        const contextData = JSON.parse(output);
+
+        if (Array.isArray(contextData) && contextData.length > 0) {
+          const contextString = contextData.map(c =>
+            `--- SOURCE: ${c.metadata.source} (Page ${c.metadata.page || 'N/A'}) ---\n${c.content}`
+          ).join('\n\n');
+
+          currentSystemPrompt += `\n\nRELEVANT CONTEXT FROM REPORTS:\n${contextString}`;
+        }
+      } catch (err) {
+        console.error("RAG Error:", err);
+      }
+    }
 
     // Convert messages: ai role -> assistant for Ollama
     const ollamaMessages = messages.map((m) => ({
@@ -72,13 +102,13 @@ export async function POST(req) {
       body: JSON.stringify({
         model: OLLAMA_MODEL,
         messages: [
-          { role: "system", content: systemPrompt },
+          { role: "system", content: currentSystemPrompt },
           ...ollamaMessages,
         ],
         stream: false,
         options: {
           temperature: 0.7,
-          num_predict: 512,
+          num_predict: 1024,
         },
       }),
     });
@@ -96,7 +126,6 @@ export async function POST(req) {
 
     return Response.json({ content });
   } catch (err) {
-    // Likely Ollama is not running
     if (err.cause?.code === "ECONNREFUSED") {
       return Response.json(
         { error: "Ollama 未启动，请先运行 `ollama serve`" },

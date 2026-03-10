@@ -1,0 +1,32 @@
+[
+    {
+        "ticker": "SPK",
+        "headline": "Spark New Zealand Limited FY25 Results",
+        "date": "20/08/2025",
+        "pdf_link": "https://api.nzx.com/public/announcement/457063/attachment/449892/457063-449892.pdf"
+    },
+    {
+        "ticker": "AIA",
+        "headline": "AIA - FY25 Annual Results",
+        "date": "21/08/2025",
+        "pdf_link": "https://api.nzx.com/public/announcement/457170/attachment/450052/457170-450052.pdf"
+    },
+    {
+        "ticker": "MFT",
+        "headline": "Mainfreight Annual Report for the year ended March 2025",
+        "date": "30/06/2025",
+        "pdf_link": "https://api.nzx.com/public/announcement/454157/attachment/447738/454157-447738.pdf"
+    },
+    {
+        "ticker": "IFT",
+        "headline": "Infratil Full Year Results for the year ended 31 March 2025",
+        "date": "28/05/2025",
+        "pdf_link": "https://api.nzx.com/public/announcement/452288/attachment/446092/452288-446092.pdf"
+    },
+    {
+        "ticker": "FPH",
+        "headline": "FPH Results for the Full Year Ended 31 March 2025",
+        "date": "22/05/2025",
+        "pdf_link": "https://api.nzx.com/public/announcement/451996/attachment/445831/451996-445831.pdf"
+    }
+]

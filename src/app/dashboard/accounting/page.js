@@ -4,18 +4,10 @@ import { useState, useRef, useEffect } from "react";
 import {
   Bot, Send, FileText, CheckCircle, Clock, AlertCircle,
   Plus, Download, Filter, Search, Eye, Edit, Trash2,
-  Sparkles, ChevronDown, RotateCcw, Play
+  Sparkles, ChevronDown, RotateCcw, Play, RefreshCw
 } from "lucide-react";
 
-// ─── Sample data ──────────────────────────────────────────────────────────────
-const vouchers = [
-  { id: "JNL-2025-0891", summary: "June Sales Revenue Recognition", debit: "Bank Account", credit: "Revenue", amount: "A$58,000.00", date: "2025-06-15", status: "Approved", ai: true },
-  { id: "JNL-2025-0890", summary: "Purchase Raw Materials", debit: "Inventory", credit: "Accounts Payable", amount: "A$23,400.00", date: "2025-06-14", status: "Pending", ai: true },
-  { id: "JNL-2025-0889", summary: "June Payroll", debit: "Admin Expense - Wages", credit: "Wages Payable", amount: "A$85,000.00", date: "2025-06-14", status: "Approved", ai: false },
-  { id: "JNL-2025-0888", summary: "Travel Expense Reimbursement", debit: "Admin Expense - Travel", credit: "Bank Account", amount: "A$3,280.00", date: "2025-06-13", status: "AI Generated", ai: true },
-  { id: "JNL-2025-0887", summary: "Utilities Payment", debit: "Admin Expense - Utilities", credit: "Bank Account", amount: "A$1,560.00", date: "2025-06-13", status: "Approved", ai: true },
-  { id: "JNL-2025-0886", summary: "GST Input Tax Credit", debit: "GST Receivable", credit: "Bank Account", amount: "A$8,120.00", date: "2025-06-12", status: "Pending", ai: true },
-];
+// Mock data removed
 
 const chatMessages = [
   {
@@ -120,9 +112,8 @@ function AIChat() {
               </div>
             )}
             <div className={`max-w-[80%] ${msg.role === "user" ? "items-end" : "items-start"} flex flex-col gap-1`}>
-              <div className={`px-4 py-3 text-sm leading-relaxed whitespace-pre-line ${
-                msg.role === "user" ? "chat-bubble-user" : "chat-bubble-ai"
-              }`}>
+              <div className={`px-4 py-3 text-sm leading-relaxed whitespace-pre-line ${msg.role === "user" ? "chat-bubble-user" : "chat-bubble-ai"
+                }`}>
                 {msg.content}
               </div>
               <span className="text-xs text-slate-400">{msg.time}</span>
@@ -136,7 +127,7 @@ function AIChat() {
             </div>
             <div className="chat-bubble-ai px-4 py-3 flex items-center gap-2">
               <div className="flex gap-1">
-                {[0,1,2].map(i => (
+                {[0, 1, 2].map(i => (
                   <span key={i} className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" style={{ animationDelay: `${i * 0.15}s` }} />
                 ))}
               </div>
@@ -178,13 +169,24 @@ function AIChat() {
 
 // ─── Journal List ──────────────────────────────────────────────────────────────
 function VoucherList() {
+  const [vouchers, setVouchers] = useState([]);
+
+  useEffect(() => {
+    fetch("/api/journals")
+      .then(r => r.json())
+      .then(data => {
+        if (!data.error) setVouchers(data);
+      })
+      .catch(console.error);
+  }, []);
+
   return (
     <div className="flex flex-col h-full bg-white rounded-2xl border border-slate-200 overflow-hidden">
       <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
         <h3 className="font-bold text-slate-900">Journal List</h3>
         <div className="flex items-center gap-2">
           <button className="flex items-center gap-1.5 text-xs text-slate-500 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-lg transition-colors">
-            <Filter className="w-3.5 h-3.5" /> Filter
+            <RefreshCw className="w-3.5 h-3.5" /> Sync
           </button>
           <button className="flex items-center gap-1.5 text-xs text-white bg-blue-600 hover:bg-blue-700 px-3 py-1.5 rounded-lg transition-colors">
             <Plus className="w-3.5 h-3.5" /> New
@@ -192,42 +194,30 @@ function VoucherList() {
         </div>
       </div>
       <div className="flex-1 overflow-y-auto scrollbar-hidden">
-        {vouchers.map(({ id, summary, debit, credit, amount, date, status, ai }) => (
+        {vouchers.length === 0 ? (
+          <div className="p-8 text-center text-slate-400">No journals generated yet. Scan an invoice to create one!</div>
+        ) : vouchers.map(({ id, summary, debit_account, credit_account, amount, date, status, ai_generated }) => (
           <div key={id} className="px-5 py-4 border-b border-slate-50 hover:bg-slate-50/60 transition-colors group">
             <div className="flex items-start justify-between gap-3">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-1">
                   <span className="font-mono text-xs text-slate-400">{id}</span>
-                  {ai && (
+                  {ai_generated && (
                     <span className="flex items-center gap-1 text-xs text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded-full">
                       <Sparkles className="w-2.5 h-2.5" /> AI
                     </span>
                   )}
                 </div>
                 <p className="font-medium text-slate-800 text-sm truncate">{summary}</p>
-                <p className="text-xs text-slate-400 mt-0.5">Dr: {debit} / Cr: {credit}</p>
+                <p className="text-xs text-slate-400 mt-0.5">Dr: {debit_account} / Cr: {credit_account}</p>
                 <p className="text-xs text-slate-400">{date}</p>
               </div>
               <div className="flex flex-col items-end gap-2 flex-shrink-0">
-                <span className="font-bold text-slate-900 text-sm">{amount}</span>
-                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                  status === "Approved" ? "status-success" :
+                <span className="font-bold text-slate-900 text-sm">${Number(amount || 0).toFixed(2)}</span>
+                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${status === "Approved" ? "status-success" :
                   status === "AI Generated" ? "status-info" : "status-warning"
-                }`}>{status}</span>
+                  }`}>{status}</span>
               </div>
-            </div>
-            <div className="flex gap-2 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
-              <button className="text-xs flex items-center gap-1 text-slate-500 hover:text-blue-600">
-                <Eye className="w-3.5 h-3.5" /> View
-              </button>
-              <button className="text-xs flex items-center gap-1 text-slate-500 hover:text-blue-600">
-                <Edit className="w-3.5 h-3.5" /> Edit
-              </button>
-              {status === "Pending" && (
-                <button className="text-xs flex items-center gap-1 text-green-600 hover:text-green-700 font-medium">
-                  <CheckCircle className="w-3.5 h-3.5" /> Approve
-                </button>
-              )}
             </div>
           </div>
         ))}
@@ -279,9 +269,8 @@ export default function AccountingPage() {
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
-            className={`flex-1 py-2 text-sm font-medium rounded-xl transition-colors ${
-              activeTab === tab ? "bg-blue-600 text-white" : "bg-white text-slate-500 border border-slate-200"
-            }`}
+            className={`flex-1 py-2 text-sm font-medium rounded-xl transition-colors ${activeTab === tab ? "bg-blue-600 text-white" : "bg-white text-slate-500 border border-slate-200"
+              }`}
           >
             {tab === "chat" ? "AI Assistant" : "Journal List"}
           </button>

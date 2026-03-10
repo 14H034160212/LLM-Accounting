@@ -1,21 +1,13 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import {
   FileText, Upload, Download, Search, Filter, CheckCircle,
   AlertCircle, Clock, Eye, Trash2, RefreshCw, Sparkles,
   ChevronDown, Plus, FileCheck, Building2, Calendar, X, Loader2
 } from "lucide-react";
 
-const initialInvoices = [
-  { id: "INV-2025-0312", seller: "Bunnings Warehouse", buyer: "My Company", amount: "A$2,340.00", tax: "A$212.73", date: "2025-06-15", type: "Tax Invoice", status: "Verified" },
-  { id: "INV-2025-0311", seller: "Telstra Business", buyer: "My Company", amount: "A$280.00", tax: "A$25.45", date: "2025-06-14", type: "Tax Invoice", status: "Verified" },
-  { id: "INV-2025-0310", seller: "AWS Australia", buyer: "My Company", amount: "A$1,560.00", tax: "A$141.82", date: "2025-06-13", type: "Tax Invoice", status: "Pending" },
-  { id: "INV-2025-0309", seller: "Uber for Business", buyer: "My Company", amount: "A$340.00", tax: "A$30.91", date: "2025-06-12", type: "Receipt", status: "Verified" },
-  { id: "INV-2025-0308", seller: "Australia Post", buyer: "My Company", amount: "A$128.00", tax: "A$11.64", date: "2025-06-11", type: "Receipt", status: "Error" },
-  { id: "INV-2025-0307", seller: "Xero Australia", buyer: "My Company", amount: "A$85.00", tax: "A$7.73", date: "2025-06-10", type: "Tax Invoice", status: "Verified" },
-];
-
+// Mock data removed
 const typeColors = {
   "Tax Invoice": "text-blue-700 bg-blue-50 border-blue-200",
   "Receipt": "text-indigo-700 bg-indigo-50 border-indigo-200",
@@ -25,6 +17,14 @@ const typeColors = {
 // ─── OCR Result Modal ──────────────────────────────────────────────────────────
 function OcrResultModal({ result, onConfirm, onClose }) {
   const inv = result.invoice;
+
+  const formatCurrency = (amount) => {
+    if (amount == null || isNaN(amount)) return "—";
+    const cur = (inv.currency || "AUD").toUpperCase();
+    const symbol = cur.includes("NZ") ? "NZ$" : cur.includes("AU") ? "A$" : "$";
+    return `${symbol}${Number(amount).toFixed(2)}`;
+  };
+
   return (
     <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg">
@@ -43,9 +43,9 @@ function OcrResultModal({ result, onConfirm, onClose }) {
             { label: "Invoice No.", value: inv.invoiceNumber },
             { label: "Date", value: inv.date },
             { label: "Type", value: inv.type },
-            { label: "Subtotal", value: inv.subtotal != null ? `${inv.currency || "AUD"} ${inv.subtotal.toFixed(2)}` : "—" },
-            { label: "GST", value: inv.gst != null ? `${inv.currency || "AUD"} ${inv.gst.toFixed(2)}` : "—" },
-            { label: "Total", value: inv.total != null ? `${inv.currency || "AUD"} ${inv.total.toFixed(2)}` : "—" },
+            { label: "Subtotal", value: formatCurrency(inv.subtotal) },
+            { label: "GST", value: formatCurrency(inv.gst) },
+            { label: "Total", value: formatCurrency(inv.total) },
           ].map(({ label, value }) => (
             <div key={label} className="flex items-center justify-between py-2 border-b border-slate-50">
               <span className="text-sm text-slate-500">{label}</span>
@@ -58,7 +58,7 @@ function OcrResultModal({ result, onConfirm, onClose }) {
               {inv.lineItems.map((item, i) => (
                 <div key={i} className="flex justify-between text-xs text-slate-600 bg-slate-50 rounded-lg px-3 py-2 mb-1">
                   <span>{item.description}</span>
-                  <span className="font-medium">{inv.currency || "AUD"} {item.amount?.toFixed(2)}</span>
+                  <span className="font-medium">{formatCurrency(item.amount)}</span>
                 </div>
               ))}
             </div>
@@ -68,7 +68,7 @@ function OcrResultModal({ result, onConfirm, onClose }) {
           <button onClick={onClose} className="flex-1 text-sm text-slate-600 bg-slate-100 hover:bg-slate-200 py-2.5 rounded-xl transition-colors">
             Discard
           </button>
-          <button onClick={() => onConfirm(inv)} className="flex-1 text-sm text-white bg-blue-600 hover:bg-blue-700 py-2.5 rounded-xl transition-colors font-medium">
+          <button onClick={() => onConfirm({ ...inv, image_url: result.image_url })} className="flex-1 text-sm text-white bg-blue-600 hover:bg-blue-700 py-2.5 rounded-xl transition-colors font-medium">
             Add to Invoice List
           </button>
         </div>
@@ -77,8 +77,86 @@ function OcrResultModal({ result, onConfirm, onClose }) {
   );
 }
 
+function ViewInvoiceModal({ invoice, onClose }) {
+  let rawData = null;
+  try {
+    rawData = invoice.raw_json ? JSON.parse(invoice.raw_json) : invoice;
+  } catch (e) {
+    rawData = invoice;
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl overflow-hidden flex flex-col max-h-[90vh]">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 flex-shrink-0">
+          <div className="flex items-center gap-2">
+            <Eye className="w-5 h-5 text-blue-500" />
+            <h3 className="font-bold text-slate-900">Invoice Comparison View</h3>
+          </div>
+          <button onClick={onClose} className="p-1 hover:bg-slate-100 rounded-lg transition-colors">
+            <X className="w-4 h-4 text-slate-400" />
+          </button>
+        </div>
+        
+        <div className="flex-1 overflow-hidden flex flex-col md:flex-row">
+          {/* Left Panel: Original Document */}
+          <div className="md:w-1/2 p-6 bg-slate-200 overflow-y-auto flex items-start justify-center border-r border-slate-100">
+            {invoice.image_url ? (
+              <img 
+                src={invoice.image_url} 
+                alt="Original Receipt" 
+                className="max-w-full h-auto rounded-lg shadow-lg border border-white" 
+              />
+            ) : (
+              <div className="flex flex-col items-center justify-center h-64 text-slate-400">
+                <Upload className="w-12 h-12 mb-3 opacity-20" />
+                <p className="text-sm">No original image available for this record</p>
+              </div>
+            )}
+          </div>
+
+          {/* Right Panel: Data Extracted */}
+          <div className="md:w-1/2 p-6 overflow-y-auto bg-white space-y-6">
+            <section>
+              <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Structured Data (SQLite)</h4>
+              <div className="grid grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-100">
+                {[
+                  { label: "ID", value: invoice.id },
+                  { label: "Status", value: invoice.status },
+                  { label: "Supplier", value: invoice.seller },
+                  { label: "Date", value: invoice.date },
+                  { label: "Amount", value: typeof invoice.amount === 'number' ? `$${invoice.amount.toFixed(2)}` : invoice.amount },
+                  { label: "Tax (GST)", value: typeof invoice.tax === 'number' ? `$${invoice.tax.toFixed(2)}` : invoice.tax },
+                ].map(item => (
+                  <div key={item.label}>
+                    <p className="text-[10px] text-slate-400 font-bold uppercase">{item.label}</p>
+                    <p className="text-sm font-semibold text-slate-800 truncate">{item.value || "—"}</p>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <section>
+              <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Raw AI JSON Payload</h4>
+              <pre className="bg-slate-900 text-blue-300 p-4 rounded-xl text-[11px] font-mono leading-relaxed overflow-x-auto shadow-inner border border-slate-800">
+                {JSON.stringify(rawData, null, 2)}
+              </pre>
+            </section>
+          </div>
+        </div>
+
+        <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 flex justify-end flex-shrink-0">
+          <button onClick={onClose} className="text-sm text-slate-600 bg-white border border-slate-200 hover:bg-slate-100 px-6 py-2 rounded-xl transition-colors font-medium shadow-sm">
+            Close Viewer
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function InvoicesPage() {
-  const [invoices, setInvoices] = useState(initialInvoices);
+  const [invoices, setInvoices] = useState([]);
   const [selected, setSelected] = useState([]);
   const [search, setSearch] = useState("");
   const [activeFilter, setActiveFilter] = useState("All");
@@ -86,11 +164,22 @@ export default function InvoicesPage() {
   const [ocrResult, setOcrResult] = useState(null);
   const [ocrError, setOcrError] = useState("");
   const [dragOver, setDragOver] = useState(false);
+  const [viewingInvoice, setViewingInvoice] = useState(null);
   const fileInputRef = useRef(null);
+
+  // Fetch real invoices from DB on mount
+  useEffect(() => {
+    fetch("/api/invoices")
+      .then(r => r.json())
+      .then(data => {
+        if (!data.error) setInvoices(data);
+      })
+      .catch(console.error);
+  }, []);
 
   const filters = ["All", "Verified", "Pending", "Error"];
   const filtered = invoices.filter(inv => {
-    const matchSearch = inv.seller.toLowerCase().includes(search.toLowerCase()) || inv.id.includes(search);
+    const matchSearch = inv.seller?.toLowerCase().includes(search.toLowerCase()) || inv.id?.includes(search);
     const matchFilter = activeFilter === "All" || inv.status === activeFilter;
     return matchSearch && matchFilter;
   });
@@ -132,30 +221,56 @@ export default function InvoicesPage() {
     processFile(e.dataTransfer.files[0]);
   };
 
-  const handleConfirm = (inv) => {
+  const handleConfirm = async (inv) => {
     const id = `INV-${Date.now()}`;
-    const currency = inv.currency === "NZD" ? "NZ$" : "A$";
     const newInvoice = {
       id,
       seller: inv.seller || "Unknown",
       buyer: "My Company",
-      amount: `${currency}${(inv.total || 0).toFixed(2)}`,
-      tax: `${currency}${(inv.gst || 0).toFixed(2)}`,
+      amount: inv.total || 0,
+      tax: inv.gst || 0,
       date: inv.date || new Date().toISOString().split("T")[0],
       type: inv.type || "Tax Invoice",
-      status: "Pending",
+      currency: inv.currency || 'AUD',
+      status: "Verified",
+      image_url: inv.image_url || null
     };
-    setInvoices(prev => [newInvoice, ...prev]);
-    setOcrResult(null);
+
+    // Save to DB
+    try {
+      await fetch("/api/invoices", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newInvoice)
+      });
+      // Trigger AI Journal Entry Generation
+      await fetch("/api/journals", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "generate_from_invoice", invoice: newInvoice })
+      });
+
+      setInvoices(prev => [newInvoice, ...prev]);
+      setOcrResult(null);
+    } catch (e) {
+      console.error(e);
+      setOcrError("Failed to save to database");
+    }
   };
 
   const totalTax = invoices.filter(i => i.status === "Verified")
-    .reduce((sum, i) => sum + parseFloat(i.tax.replace(/[^0-9.]/g, "")), 0);
+    .reduce((sum, i) => {
+      const taxVal = typeof i.tax === 'string' ? parseFloat(i.tax.replace(/[^0-9.-]/g, "")) : Number(i.tax);
+      return sum + (isNaN(taxVal) ? 0 : taxVal);
+    }, 0);
 
   return (
     <div className="p-6 space-y-5">
       {/* OCR Result Modal */}
       {ocrResult && <OcrResultModal result={ocrResult} onConfirm={handleConfirm} onClose={() => setOcrResult(null)} />}
+
+      {/* View Data Modal */}
+      {viewingInvoice && <ViewInvoiceModal invoice={viewingInvoice} onClose={() => setViewingInvoice(null)} />}
 
       {/* Hidden file input */}
       <input ref={fileInputRef} type="file" accept="image/*,.pdf" className="hidden" onChange={handleFileInput} />
@@ -164,7 +279,7 @@ export default function InvoicesPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-slate-900">Invoice Management</h1>
-          <p className="text-slate-500 text-sm">AI-powered invoice recognition · GST extraction · Qwen3-VL</p>
+          <p className="text-slate-500 text-sm">AI-powered invoice recognition · GST extraction · Vision model (preferred JPG/PNG)</p>
         </div>
         <div className="flex items-center gap-2">
           <button className="flex items-center gap-2 text-sm text-slate-600 bg-white border border-slate-200 px-4 py-2 rounded-xl hover:bg-slate-50 transition-colors">
@@ -206,21 +321,20 @@ export default function InvoicesPage() {
         onDrop={handleDrop}
         onDragOver={e => { e.preventDefault(); setDragOver(true); }}
         onDragLeave={() => setDragOver(false)}
-        className={`border-2 border-dashed rounded-2xl p-8 text-center transition-all cursor-pointer ${
-          dragOver ? "border-blue-500 bg-blue-50" : "border-blue-200 bg-blue-50/40 hover:bg-blue-50 hover:border-blue-400"
-        }`}
+        className={`border-2 border-dashed rounded-2xl p-8 text-center transition-all cursor-pointer ${dragOver ? "border-blue-500 bg-blue-50" : "border-blue-200 bg-blue-50/40 hover:bg-blue-50 hover:border-blue-400"
+          }`}
       >
         {ocrLoading ? (
           <div className="flex flex-col items-center gap-3">
             <Loader2 className="w-10 h-10 text-blue-500 animate-spin" />
             <p className="font-semibold text-slate-700">AI is reading your invoice...</p>
-            <p className="text-sm text-slate-400">Qwen3-VL is extracting data</p>
+            <p className="text-sm text-slate-400">Vision model is extracting data</p>
           </div>
         ) : (
           <>
             <Upload className="w-10 h-10 text-blue-400 mx-auto mb-3" />
             <p className="font-semibold text-slate-700">Drop invoice here or click to upload</p>
-            <p className="text-sm text-slate-400 mt-1">Supports JPG, PNG, WebP · AI auto-extracts supplier, GST, total</p>
+            <p className="text-sm text-slate-400 mt-1">Preferred: JPG or PNG. WebP may sometimes fail — convert to PNG/JPG if you see an error. Max 10MB. Ensure text is clear for best OCR results.</p>
             <button className="mt-4 text-sm text-white bg-blue-600 hover:bg-blue-700 px-5 py-2 rounded-full transition-colors pointer-events-none">
               Choose File
             </button>
@@ -256,11 +370,10 @@ export default function InvoicesPage() {
             <button
               key={f}
               onClick={() => setActiveFilter(f)}
-              className={`text-sm px-4 py-2 rounded-xl transition-colors font-medium ${
-                activeFilter === f
-                  ? "bg-blue-600 text-white shadow-sm"
-                  : "bg-white text-slate-500 border border-slate-200 hover:border-blue-300"
-              }`}
+              className={`text-sm px-4 py-2 rounded-xl transition-colors font-medium ${activeFilter === f
+                ? "bg-blue-600 text-white shadow-sm"
+                : "bg-white text-slate-500 border border-slate-200 hover:border-blue-300"
+                }`}
             >
               {f}
             </button>
@@ -314,18 +427,21 @@ export default function InvoicesPage() {
                     {inv.type}
                   </span>
                 </td>
-                <td className="py-3 px-4 text-right font-semibold text-slate-900">{inv.amount}</td>
-                <td className="py-3 px-4 text-right text-slate-600">{inv.tax}</td>
+                <td className="py-3 px-4 text-right font-semibold text-slate-900">
+                  {typeof inv.amount === 'number' ? `$${inv.amount.toFixed(2)}` : inv.amount}
+                </td>
+                <td className="py-3 px-4 text-right text-slate-600">
+                  {typeof inv.tax === 'number' ? `$${inv.tax.toFixed(2)}` : inv.tax}
+                </td>
                 <td className="py-3 px-4 text-slate-500">{inv.date}</td>
                 <td className="py-3 px-4">
-                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                    inv.status === "Verified" ? "status-success" :
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${inv.status === "Verified" ? "status-success" :
                     inv.status === "Error" ? "status-error" : "status-warning"
-                  }`}>{inv.status}</span>
+                    }`}>{inv.status}</span>
                 </td>
                 <td className="py-3 px-4">
                   <div className="flex items-center gap-2">
-                    <button className="p-1 hover:bg-blue-100 rounded-lg transition-colors">
+                    <button onClick={() => setViewingInvoice(inv)} className="p-1 hover:bg-blue-100 rounded-lg transition-colors">
                       <Eye className="w-3.5 h-3.5 text-slate-400 hover:text-blue-600" />
                     </button>
                     <button onClick={() => setInvoices(prev => prev.filter(i => i.id !== inv.id))} className="p-1 hover:bg-red-100 rounded-lg transition-colors">

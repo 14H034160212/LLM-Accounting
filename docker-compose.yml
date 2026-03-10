@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "54297:3000"
+    environment:
+      - NODE_ENV=production
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - OLLAMA_MODEL=qwen3:8b
+      - OLLAMA_VISION_MODEL=qwen3-vl:8b
+    depends_on:
+      - ollama
+    restart: unless-stopped
+    volumes:
+      - sqlite_data:/app/data
+
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "55379:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+      - ./docker-entrypoint.sh:/docker-entrypoint.sh
+    entrypoint: ["/bin/bash", "/docker-entrypoint.sh"]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: unless-stopped
+
+volumes:
+  ollama_data:
+  sqlite_data:

@@ -1,29 +1,43 @@
 const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || "http://localhost:11434";
-const VISION_MODEL = process.env.OLLAMA_VISION_MODEL || "qwen3vl:8b";
+const VISION_MODEL = process.env.OLLAMA_VISION_MODEL || "llava:7b";
 
-const EXTRACT_PROMPT = `You are an invoice data extraction assistant. Analyze this invoice image and extract the following information in JSON format only (no markdown, no explanation):
+import sharp from 'sharp';
+import path from 'path';
+import fs from 'fs';
+
+export const dynamic = "force-dynamic";
+
+const EXTRACT_PROMPT = `You are a high-precision invoice data extraction expert for Australian and New Zealand (AU/NZ) markets.
+Analyze the provided invoice image and extract the data into the following JSON format.
+Follow these CRITICAL rules:
+1. Identify AU/NZ specific details: ABN (Australia), NZBN (New Zealand), GST numbers.
+2. Check for "Tax Invoice" markers to determine type.
+3. Validate math: ensure (subtotal + gst = total). If the math doesn't add up, trust the printed "Total" but note the discrepancy in "notes".
+4. For lineItems: extract description, quantity (default to 1 if missing), unitPrice, and amount.
+5. Return ONLY valid JSON, no markdown blocks, no extra text.
 
 {
-  "seller": "seller/supplier company name",
-  "buyer": "buyer/customer company name or 'N/A'",
-  "invoiceNumber": "invoice number or reference",
-  "date": "invoice date in YYYY-MM-DD format",
-  "dueDate": "payment due date in YYYY-MM-DD format or null",
-  "subtotal": numeric value without currency symbol,
-  "gst": numeric GST/tax amount without currency symbol,
-  "total": numeric total amount without currency symbol,
-  "currency": "AUD or NZD or other",
-  "type": "Tax Invoice / Receipt / Credit Note / other",
+  "seller": "full legal name of the supplier",
+  "sellerABN": "ABN or NZBN if found",
+  "buyer": "customer name if present",
+  "invoiceNumber": "invoice or reference number",
+  "date": "YYYY-MM-DD",
+  "dueDate": "YYYY-MM-DD or null",
+  "subtotal": numeric,
+  "gst": numeric,
+  "total": numeric,
+  "currency": "AUD, NZD, or other",
+  "type": "Tax Invoice, Receipt, etc.",
   "lineItems": [
-    { "description": "item description", "quantity": number, "unitPrice": number, "amount": number }
+    { "description": "text", "quantity": number, "unitPrice": number, "amount": number }
   ],
-  "notes": "any payment terms or important notes"
+  "notes": "math verification or key terms"
 }
-
-If a field cannot be determined from the image, use null. Return ONLY valid JSON.`;
+`;
 
 export async function POST(req) {
   try {
+    console.log("OCR POST started with refined prompt");
     const formData = await req.formData();
     const file = formData.get("image");
 
@@ -31,59 +45,108 @@ export async function POST(req) {
       return Response.json({ error: "No image provided" }, { status: 400 });
     }
 
-    // Convert file to base64
     const buffer = await file.arrayBuffer();
-    const base64 = Buffer.from(buffer).toString("base64");
-    const mimeType = file.type || "image/jpeg";
-    const dataUrl = `data:${mimeType};base64,${base64}`;
+    let imgBuf = Buffer.from(buffer);
+    let mimeType = file.type || "image/jpeg";
 
-    // Call Ollama vision model (OpenAI-compatible endpoint)
-    const response = await fetch(`${OLLAMA_BASE_URL}/v1/chat/completions`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: VISION_MODEL,
-        messages: [
-          {
-            role: "user",
-            content: [
-              { type: "text", text: EXTRACT_PROMPT },
-              { type: "image_url", image_url: { url: dataUrl } },
-            ],
-          },
-        ],
-        stream: false,
-        options: { temperature: 0.1 }, // Low temp for accurate extraction
-      }),
-    });
+    // Increase resolution for better OCR: 1600 -> 2048
+    const MAX_WIDTH = 2048;
 
-    if (!response.ok) {
-      const err = await response.text();
-      return Response.json({ error: `Ollama error: ${err}` }, { status: 500 });
+    try {
+      if (mimeType !== "image/jpeg" && mimeType !== "image/png") {
+        imgBuf = await sharp(imgBuf).resize({ width: MAX_WIDTH, withoutEnlargement: true }).jpeg({ quality: 90 }).toBuffer();
+        mimeType = "image/jpeg";
+      } else {
+        const metadata = await sharp(imgBuf).metadata();
+        if (metadata.width && metadata.width > MAX_WIDTH) {
+          imgBuf = await sharp(imgBuf).resize({ width: MAX_WIDTH }).toBuffer();
+        }
+      }
+    } catch (convErr) {
+      console.error("Image conversion failed:", convErr?.message || convErr);
     }
 
-    const data = await response.json();
-    const rawContent = data.choices?.[0]?.message?.content || "";
+    const base64 = imgBuf.toString("base64");
+    console.log("Image length:", base64.length, "Vision Model:", VISION_MODEL);
 
-    // Parse JSON from model response
+    async function callOllama(url, body) {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+
+      const resText = await res.text();
+      if (!res.ok) {
+        throw new Error(resText || `Ollama error: ${res.status}`);
+      }
+      return JSON.parse(resText);
+    }
+
+    let data;
+    try {
+      console.log("Using native generate for vision...");
+      data = await callOllama(`${OLLAMA_BASE_URL}/api/generate`, {
+        model: VISION_MODEL,
+        prompt: EXTRACT_PROMPT,
+        images: [base64],
+        stream: false,
+        options: {
+          temperature: 0.1,
+          num_predict: 2500,
+          top_p: 0.9
+        },
+      });
+
+      if (!data.response) {
+        throw new Error("Empty response from native generate");
+      }
+    } catch (err) {
+      console.log("Native failed, checking for fallback...", err.message);
+      // Fallback to OpenAI-compatible chat completions if native vision fails
+      const dataUrl = `data:${mimeType};base64,${base64}`;
+      data = await callOllama(`${OLLAMA_BASE_URL}/v1/chat/completions`, {
+        model: VISION_MODEL,
+        messages: [{
+          role: "user",
+          content: [
+            { type: "text", text: EXTRACT_PROMPT },
+            { type: "image_url", image_url: { url: dataUrl } },
+          ],
+        }],
+        temperature: 0.1,
+        stream: false,
+      });
+    }
+
+    const rawContent = data.response || data.choices?.[0]?.message?.content || "";
+    console.log("OCR Result received. Length:", rawContent.length, "Preview:", rawContent.substring(0, 50).replace(/\n/g, ' '));
+
+    if (!rawContent) {
+      console.error("Critical: Model returned completely empty response after fallbacks. Full data length:", JSON.stringify(data).length);
+      return Response.json({ error: "Model returned an empty response. Try a different image format or model.", raw: rawContent }, { status: 422 });
+    }
+
     let invoiceData;
     try {
-      // Strip markdown code blocks if present
       const cleaned = rawContent.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
       invoiceData = JSON.parse(cleaned);
     } catch {
-      // Return raw text if JSON parse fails
-      return Response.json({ error: "Could not parse invoice data", raw: rawContent }, { status: 422 });
+      console.error("JSON Parse failed for OCR result:", rawContent.substring(0, 100).replace(/\n/g, ' '));
+      return Response.json({ error: "Extraction failed to return valid JSON", raw: rawContent }, { status: 422 });
     }
 
-    return Response.json({ success: true, invoice: invoiceData });
+    const uploadDir = path.join(process.cwd(), 'public', 'uploads');
+    if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+
+    const ext = mimeType === "image/png" ? "png" : "jpg";
+    const fileName = `inv-${Date.now()}.${ext}`;
+    fs.writeFileSync(path.join(uploadDir, fileName), imgBuf);
+    const imageUrl = `/uploads/${fileName}`;
+
+    return Response.json({ success: true, invoice: invoiceData, image_url: imageUrl });
   } catch (err) {
-    if (err.cause?.code === "ECONNREFUSED") {
-      return Response.json(
-        { error: "Ollama is not running. Please run `ollama serve` and ensure qwen3vl:8b is installed." },
-        { status: 503 }
-      );
-    }
+    console.error("OCR Route Error:", err);
     return Response.json({ error: err.message }, { status: 500 });
   }
 }
