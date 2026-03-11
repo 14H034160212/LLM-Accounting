@@ -73,7 +73,20 @@ def process_invoice(image_path):
         small_img.save(buffered_small, format="JPEG", quality=75)
         small_b64 = base64.b64encode(buffered_small.getvalue()).decode('utf-8')
 
-        extracted_data = {}
+        extracted_data = {
+            "seller": "Unknown",
+            "date": "2026-01-01",
+            "amount": 0.0,
+            "tax": 0.0,
+            "invoiceNumber": "N/A",
+            "lineItems": [],
+            "currency": "AUD",
+            "due_date": "",
+            "customer_name": "Unknown",
+            "customer_address": "",
+            "seller_address": "",
+            "discount": 0.0
+        }
         img_size = os.path.getsize(image_path)
         log(f"--- Starting: {image_path.name} ({img_size} bytes) ---")
         
