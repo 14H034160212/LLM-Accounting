@@ -60,19 +60,8 @@ def process_invoice(image_path):
         with open(image_path, "rb") as f:
             img_b64 = base64.b64encode(f.read()).decode('utf-8')
 
-        # Create downscaled image for fast serial basic field extraction
+        # Use original image for highest fidelity OCR
         pil_img = Image.open(image_path).convert("RGB")
-        max_dim = 1000
-        if max(pil_img.width, pil_img.height) > max_dim:
-            scale = max_dim / max(pil_img.width, pil_img.height)
-            new_w, new_h = int(pil_img.width * scale), int(pil_img.height * scale)
-            small_img = pil_img.resize((new_w, new_h), Image.Resampling.LANCZOS)
-        else:
-            small_img = pil_img
-            
-        buffered_small = io.BytesIO()
-        small_img.save(buffered_small, format="JPEG", quality=75)
-        small_b64 = base64.b64encode(buffered_small.getvalue()).decode('utf-8')
 
         extracted_data = {
             "seller": "Unknown",
@@ -107,7 +96,7 @@ Fields:
 - "currency": string (ISO code e.g. USD, EUR, AUD)
 Example: {"seller": "Apple", "date": "2024-01-01", "amount": 100.50, "tax": 10.05, "invoiceNumber": "INV-001"}"""
         
-        payload = {"model": MODEL, "prompt": prompt, "images": [small_b64], "stream": False, "options": {"temperature": 0.0}}
+        payload = {"model": MODEL, "prompt": prompt, "images": [img_b64], "stream": False, "options": {"temperature": 0.0}}
         log(f"  Requesting all basic fields (Single Shot)...")
         
         try:
@@ -148,7 +137,13 @@ Example: {"seller": "Apple", "date": "2024-01-01", "amount": 100.50, "tax": 10.0
             log("  Retrying targeted seller extraction...")
             sel_prompt = "Extract ONLY the name of the company that issued this invoice. Reply with the name only."
             try:
-                res = requests.post(OLLAMA_API, json={"model": MODEL, "prompt": sel_prompt, "images": [small_b64], "stream": False}, timeout=300)
+                res = requests.post(OLLAMA_API, json={
+                    "model": MODEL, 
+                    "prompt": sel_prompt, 
+                    "images": [img_b64], 
+                    "stream": False,
+                    "options": {"temperature": 0.0, "num_predict": 200}
+                }, timeout=300)
                 if res.status_code == 200:
                     extracted_data["seller"] = res.json().get("response", "").strip()
             except: pass
@@ -196,7 +191,7 @@ Example: {"seller": "Apple", "date": "2024-01-01", "amount": 100.50, "tax": 10.0
                 # Fallback: Request line items from full image if table detector failed
                 full_prompt = '''Extract all tabular line items from this invoice image. Return ONLY a valid JSON array of objects. Format: [{"description": "item", "quantity": 1, "unitPrice": 10.0, "amount": 10.0}]'''
                 try:
-                    res = requests.post(OLLAMA_API, json={"model": MODEL, "prompt": full_prompt, "images": [small_b64], "stream": False}, timeout=300)
+                    res = requests.post(OLLAMA_API, json={"model": MODEL, "prompt": full_prompt, "images": [img_b64], "stream": False, "options": {"temperature": 0.0, "num_predict": 800}}, timeout=300)
                     if res.status_code == 200:
                         raw_lines = res.json().get("response", "").strip()
                         cleaned = raw_lines
