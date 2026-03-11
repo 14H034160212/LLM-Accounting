@@ -31,8 +31,9 @@ try:
     from PIL import Image
     import io
     print("Loading TATR models...", flush=True)
+    device = "cuda:7" if torch.cuda.is_available() else "cpu"
     tatr_processor = AutoImageProcessor.from_pretrained("microsoft/table-transformer-detection")
-    tatr_model = TableTransformerForObjectDetection.from_pretrained("microsoft/table-transformer-detection")
+    tatr_model = TableTransformerForObjectDetection.from_pretrained("microsoft/table-transformer-detection").to(device)
 except Exception as e:
     print(f"TATR failed to load: {e}")
     tatr_processor = None
@@ -154,7 +155,7 @@ Example: {"seller": "Apple", "date": "2024-01-01", "amount": 100.50, "tax": 10.0
         if tatr_processor and tatr_model:
             log(f"  Detecting table with TATR...")
             # pil_img already loaded
-            inputs = tatr_processor(images=pil_img, return_tensors="pt")
+            inputs = tatr_processor(images=pil_img, return_tensors="pt").to(device)
             outputs = tatr_model(**inputs)
             target_sizes = torch.tensor([pil_img.size[::-1]])
             results = tatr_processor.post_process_object_detection(outputs, threshold=0.2, target_sizes=target_sizes)[0]
