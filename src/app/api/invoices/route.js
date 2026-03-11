@@ -17,8 +17,16 @@ export async function POST(req) {
 
         // Insert into DB
         const insert = db.prepare(`
-      INSERT INTO invoices (id, seller, buyer, amount, tax, date, type, status, currency, raw_json, image_url)
-      VALUES (@id, @seller, @buyer, @amount, @tax, @date, @type, @status, @currency, @raw_json, @image_url)
+      INSERT INTO invoices (
+        id, seller, buyer, amount, tax, date, type, status, currency, 
+        raw_json, image_url, invoice_number, due_date, customer_name, 
+        customer_address, seller_address, discount
+      )
+      VALUES (
+        @id, @seller, @buyer, @amount, @tax, @date, @type, @status, @currency, 
+        @raw_json, @image_url, @invoice_number, @due_date, @customer_name, 
+        @customer_address, @seller_address, @discount
+      )
     `);
 
         insert.run({
@@ -32,7 +40,13 @@ export async function POST(req) {
             status: invoice.status || 'Verified',
             currency: invoice.currency || 'AUD',
             raw_json: JSON.stringify(invoice),
-            image_url: invoice.image_url || null
+            image_url: invoice.image_url || null,
+            invoice_number: invoice.invoice_number || null,
+            due_date: invoice.due_date || null,
+            customer_name: invoice.customer_name || null,
+            customer_address: invoice.customer_address || null,
+            seller_address: invoice.seller_address || null,
+            discount: invoice.discount || 0
         });
 
         return NextResponse.json({ success: true, invoice });

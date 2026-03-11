@@ -1,5 +1,5 @@
-const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || "http://localhost:11434";
-const VISION_MODEL = process.env.OLLAMA_VISION_MODEL || "llava:7b";
+const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || "http://localhost:11437";
+const VISION_MODEL = process.env.OLLAMA_VISION_MODEL || "qwen3-vl:latest";
 
 import sharp from 'sharp';
 import path from 'path';

@@ -97,15 +97,15 @@ function ViewInvoiceModal({ invoice, onClose }) {
             <X className="w-4 h-4 text-slate-400" />
           </button>
         </div>
-        
+
         <div className="flex-1 overflow-hidden flex flex-col md:flex-row">
           {/* Left Panel: Original Document */}
           <div className="md:w-1/2 p-6 bg-slate-200 overflow-y-auto flex items-start justify-center border-r border-slate-100">
             {invoice.image_url ? (
-              <img 
-                src={invoice.image_url} 
-                alt="Original Receipt" 
-                className="max-w-full h-auto rounded-lg shadow-lg border border-white" 
+              <img
+                src={invoice.image_url}
+                alt="Original Receipt"
+                className="max-w-full h-auto rounded-lg shadow-lg border border-white"
               />
             ) : (
               <div className="flex flex-col items-center justify-center h-64 text-slate-400">
@@ -119,28 +119,82 @@ function ViewInvoiceModal({ invoice, onClose }) {
           <div className="md:w-1/2 p-6 overflow-y-auto bg-white space-y-6">
             <section>
               <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Structured Data (SQLite)</h4>
-              <div className="grid grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-100">
+              <div className="grid grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-100 font-sans">
                 {[
                   { label: "ID", value: invoice.id },
                   { label: "Status", value: invoice.status },
                   { label: "Supplier", value: invoice.seller },
+                  { label: "Invoice #", value: invoice.invoice_number || "N/A" },
                   { label: "Date", value: invoice.date },
-                  { label: "Amount", value: typeof invoice.amount === 'number' ? `$${invoice.amount.toFixed(2)}` : invoice.amount },
-                  { label: "Tax (GST)", value: typeof invoice.tax === 'number' ? `$${invoice.tax.toFixed(2)}` : invoice.tax },
+                  { label: "Due Date", value: invoice.due_date || "—" },
+                  { label: "Amount", value: `${invoice.currency || 'AUD'} ${typeof invoice.amount === 'number' ? invoice.amount.toFixed(2) : invoice.amount}` },
+                  { label: "Tax", value: `${invoice.currency || 'AUD'} ${typeof invoice.tax === 'number' ? invoice.tax.toFixed(2) : invoice.tax}` },
+                  { label: "Discount", value: invoice.discount > 0 ? `${invoice.currency || 'AUD'} ${invoice.discount.toFixed(2)}` : "None" },
+                  { label: "Customer", value: invoice.customer_name || "Unknown" },
                 ].map(item => (
-                  <div key={item.label}>
-                    <p className="text-[10px] text-slate-400 font-bold uppercase">{item.label}</p>
-                    <p className="text-sm font-semibold text-slate-800 truncate">{item.value || "—"}</p>
+                  <div key={item.label} className="overflow-hidden">
+                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-tight">{item.label}</p>
+                    <p className="text-sm font-semibold text-slate-800 truncate" title={String(item.value)}>{item.value || "—"}</p>
                   </div>
                 ))}
               </div>
+
+              {/* Addresses Section */}
+              <div className="mt-4 grid grid-cols-2 gap-4">
+                <div className="p-3 bg-blue-50/30 rounded-lg border border-blue-50">
+                  <p className="text-[9px] text-blue-400 font-bold uppercase mb-1">Seller Address</p>
+                  <p className="text-[10px] text-slate-600 leading-relaxed italic line-clamp-2">{invoice.seller_address || "Address not detected"}</p>
+                </div>
+                <div className="p-3 bg-indigo-50/30 rounded-lg border border-indigo-50">
+                  <p className="text-[9px] text-indigo-400 font-bold uppercase mb-1">Customer Address</p>
+                  <p className="text-[10px] text-slate-600 leading-relaxed italic line-clamp-2">{invoice.customer_address || "Address not detected"}</p>
+                </div>
+              </div>
             </section>
 
-            <section>
-              <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Raw AI JSON Payload</h4>
-              <pre className="bg-slate-900 text-blue-300 p-4 rounded-xl text-[11px] font-mono leading-relaxed overflow-x-auto shadow-inner border border-slate-800">
-                {JSON.stringify(rawData, null, 2)}
-              </pre>
+            <section className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Line Item Analysis</h4>
+                <div className="px-2 py-0.5 bg-blue-50 text-blue-600 text-[10px] font-bold rounded-md border border-blue-100">AI DETECTED</div>
+              </div>
+              <div className="overflow-hidden border border-slate-100 rounded-xl shadow-sm">
+                <table className="w-full text-left bg-white">
+                  <thead className="bg-slate-50 text-[10px] uppercase text-slate-500 font-bold border-b border-slate-100">
+                    <tr>
+                      <th className="px-3 py-2.5">Description</th>
+                      <th className="px-3 py-2.5 text-right">Qty</th>
+                      <th className="px-3 py-2.5 text-right">Price</th>
+                      <th className="px-3 py-2.5 text-right">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody className="text-[11px] text-slate-700 divide-y divide-slate-50">
+                    {rawData.lineItems && rawData.lineItems.length > 0 ? (
+                      rawData.lineItems.map((item, idx) => (
+                        <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
+                          <td className="px-3 py-2.5 font-medium max-w-[150px] truncate" title={item.description}>{item.description}</td>
+                          <td className="px-3 py-2.5 text-right text-slate-500">{item.quantity || 1}</td>
+                          <td className="px-3 py-2.5 text-right text-slate-500">${Number(item.unitPrice || 0).toFixed(2)}</td>
+                          <td className="px-3 py-2.5 text-right font-bold text-slate-900">${Number(item.amount || 0).toFixed(2)}</td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan="4" className="px-3 py-8 text-center text-slate-400 italic bg-slate-50/30">No granular line items detected by AI</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Technical Metadata hidden in a small detail for audit */}
+              <details className="mt-4 group">
+                <summary className="text-[10px] text-slate-300 font-bold uppercase cursor-pointer hover:text-slate-400 list-none flex items-center gap-1">
+                  <Clock className="w-2.5 h-2.5" /> View Technical JSON Payload
+                </summary>
+                <pre className="mt-2 bg-slate-900 text-blue-300/80 p-3 rounded-lg text-[9px] font-mono leading-tight overflow-x-auto border border-slate-800">
+                  {JSON.stringify(rawData, null, 2)}
+                </pre>
+              </details>
             </section>
           </div>
         </div>

@@ -3,8 +3,8 @@ import path from "path";
 import db from "@/lib/db";
 import { getInternalBusinessContext } from "@/lib/context_builder";
 
-const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || "http://localhost:11434";
-const OLLAMA_MODEL = process.env.OLLAMA_MODEL || "qwen3:8b";
+const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || "http://localhost:11437";
+const OLLAMA_MODEL = process.env.OLLAMA_MODEL || "qwen3-vl";
 
 class BaseAgent {
     constructor(name, prompt) {
@@ -62,7 +62,10 @@ export class MarketResearchAgent extends BaseAgent {
 
 export class AccountingAgent extends BaseAgent {
     constructor() {
-        super("Accounting Specialist", `You are a senior Accountant for AU/NZ SMEs. Focus on internal records, compliance, and benchmarking.`);
+        super("Accounting Specialist", `You are a senior Accountant for AU/NZ SMEs. Focus on internal records, compliance, and benchmarking.
+When you identify an unposted transaction or invoice, propose a journal entry in this format:
+[PROPOSE_JOURNAL: {"summary": "...", "debit_account": "...", "credit_account": "...", "amount": 0.00}]
+Ask the user to 'Confirm and Sync' to commit these to the official records.`);
     }
 
     async run(messages) {

@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import {
   Bot, Send, FileText, CheckCircle, Clock, AlertCircle,
   Plus, Download, Filter, Search, Eye, Edit, Trash2,
-  Sparkles, ChevronDown, RotateCcw, Play, RefreshCw
+  Sparkles, ChevronDown, RotateCcw, Play, RefreshCw, TrendingUp
 } from "lucide-react";
 
 // Mock data removed
@@ -234,7 +234,7 @@ function VoucherList() {
                 <span className="font-black text-slate-900 text-base">${Number(amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                 <div className="flex items-center gap-2">
                   <span className={`text-[10px] font-black px-2 py-0.5 rounded uppercase ${status === "Approved" || status === "Posted" ? "bg-green-100 text-green-700" :
-                      status === "AI Generated" || status === "Pending" ? "bg-blue-100 text-blue-700" : "bg-slate-100 text-slate-600"
+                    status === "AI Generated" || status === "Pending" ? "bg-blue-100 text-blue-700" : "bg-slate-100 text-slate-600"
                     }`}>{status}</span>
                   {(status === "AI Generated" || status === "Pending") && (
                     <button
