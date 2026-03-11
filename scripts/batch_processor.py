@@ -25,19 +25,7 @@ EXTRACTION_TASKS = {
     "invoiceNumber": "What is the invoice number or reference number?"
 }
 
-try:
-    from transformers import AutoImageProcessor, TableTransformerForObjectDetection
-    import torch
-    from PIL import Image
-    import io
-    print("Loading TATR models...", flush=True)
-    device = "cuda:7" if torch.cuda.is_available() else "cpu"
-    tatr_processor = AutoImageProcessor.from_pretrained("microsoft/table-transformer-detection")
-    tatr_model = TableTransformerForObjectDetection.from_pretrained("microsoft/table-transformer-detection").to(device)
-except Exception as e:
-    print(f"TATR failed to load: {e}")
-    tatr_processor = None
-    tatr_model = None
+
 
 
 
@@ -147,64 +135,21 @@ Example: {"seller": "Apple", "date": "2024-01-01", "amount": 100.50, "tax": 10.0
                 if res.status_code == 200:
                     extracted_data["seller"] = res.json().get("response", "").strip()
             except: pass
-        if tatr_processor and tatr_model:
-            log(f"  Detecting table with TATR...")
-            # pil_img already loaded
-            inputs = tatr_processor(images=pil_img, return_tensors="pt").to(device)
-            outputs = tatr_model(**inputs)
-            target_sizes = torch.tensor([pil_img.size[::-1]])
-            results = tatr_processor.post_process_object_detection(outputs, threshold=0.2, target_sizes=target_sizes)[0]
-            
-            best_score, best_box = 0, None
-            for score, label, box in zip(results["scores"], results["labels"], results["boxes"]):
-                label_name = tatr_model.config.id2label[label.item()]
-                if 'table' in label_name and score > best_score:
-                    best_score = score
-                    best_box = box.tolist()
-            
-            if best_box:
-                pad = 20
-                crop_box = (max(0, best_box[0]-pad), max(0, best_box[1]-pad), min(pil_img.width, best_box[2]+pad), min(pil_img.height, best_box[3]+pad))
-                cropped_img = pil_img.crop(crop_box)
-                buffered = io.BytesIO()
-                cropped_img.save(buffered, format="JPEG")
-                crop_b64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
-                
-                # Send ONLY the cropped table to Qwen3-VL
-                prompt = '''You are a meticulous data entry clerk. Extract all tabular line items from this cleanly cropped invoice table. Return ONLY a valid JSON array of objects. Format: [{"description": "item name", "quantity": 1.0, "unitPrice": 10.0, "amount": 10.0}]'''
-                payload = {"model": MODEL, "prompt": prompt, "images": [crop_b64], "stream": False, "options": {"temperature": 0.0, "num_predict": 1000}}
-                try:
-                    res = requests.post(OLLAMA_API, json=payload, timeout=300)
-                    if res.status_code == 200:
-                        raw_lines = res.json().get("response", "").strip()
-                        cleaned = raw_lines
-                        if "```" in cleaned:
-                            match = re.search(r"\[.*\]", cleaned, re.DOTALL)
-                            cleaned = match.group(0) if match else raw_lines
-                        extracted_data["lineItems"] = json.loads(cleaned)
-                        log(f"  SUCCESS: Extracted {len(extracted_data['lineItems'])} line items.")
-                except Exception as e:
-                    log(f"  FAILED line items extraction: {e}")
-                    extracted_data["lineItems"] = []
-            else:
-                log("  No table detected. Trying line item extraction from FULL image...")
-                # Fallback: Request line items from full image if table detector failed
-                full_prompt = '''Extract all tabular line items from this invoice image. Return ONLY a valid JSON array of objects. Format: [{"description": "item", "quantity": 1, "unitPrice": 10.0, "amount": 10.0}]'''
-                try:
-                    res = requests.post(OLLAMA_API, json={"model": MODEL, "prompt": full_prompt, "images": [img_b64], "stream": False, "options": {"temperature": 0.0, "num_predict": 800}}, timeout=300)
-                    if res.status_code == 200:
-                        raw_lines = res.json().get("response", "").strip()
-                        cleaned = raw_lines
-                        if "```" in cleaned:
-                            match = re.search(r"\[.*\]", cleaned, re.DOTALL)
-                            cleaned = match.group(0) if match else raw_lines
-                        extracted_data["lineItems"] = json.loads(cleaned)
-                        log(f"  SUCCESS (Fallback): Extracted {len(extracted_data['lineItems'])} line items.")
-                except:
-                    extracted_data["lineItems"] = []
-                    log("  WARNING: Could not extract line items from full image.")
-        else:
-             extracted_data["lineItems"] = []
+        log("  Relying on Qwen3-VL for full-image line item extraction...")
+        full_prompt = '''Extract all tabular line items from this invoice image. Return ONLY a valid JSON array of objects. Format: [{"description": "item", "quantity": 1.0, "unitPrice": 10.0, "amount": 10.0}]'''
+        try:
+            res = requests.post(OLLAMA_API, json={"model": MODEL, "prompt": full_prompt, "images": [img_b64], "stream": False, "options": {"temperature": 0.0, "num_predict": 800}}, timeout=300)
+            if res.status_code == 200:
+                raw_lines = res.json().get("response", "").strip()
+                cleaned = raw_lines
+                if "```" in cleaned:
+                    match = re.search(r"\[.*\]", cleaned, re.DOTALL)
+                    cleaned = match.group(0) if match else raw_lines
+                extracted_data["lineItems"] = json.loads(cleaned)
+                log(f"  SUCCESS: Extracted {len(extracted_data['lineItems'])} line items.")
+        except Exception as e:
+            extracted_data["lineItems"] = []
+            log(f"  FAILED line items extraction: {e}")
 
         return extracted_data, image_path.name
 
