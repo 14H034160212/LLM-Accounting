@@ -77,7 +77,7 @@ function OcrResultModal({ result, onConfirm, onClose }) {
   );
 }
 
-function ViewInvoiceModal({ invoice, onClose }) {
+function ViewInvoiceModal({ invoice, onReextract, isReextracting, onClose }) {
   let rawData = null;
   try {
     rawData = invoice.raw_json ? JSON.parse(invoice.raw_json) : invoice;
@@ -199,7 +199,29 @@ function ViewInvoiceModal({ invoice, onClose }) {
           </div>
         </div>
 
-        <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 flex justify-end flex-shrink-0">
+        <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 flex justify-between items-center flex-shrink-0">
+          <div className="flex gap-2">
+            <button
+              onClick={() => onReextract(invoice.id)}
+              disabled={isReextracting}
+              className={`flex items-center gap-2 text-xs font-bold px-4 py-2 rounded-xl transition-all border ${isReextracting
+                ? "bg-slate-100 text-slate-400 border-slate-200"
+                : "bg-white text-blue-600 border-blue-100 hover:bg-blue-50 shadow-sm"
+                }`}
+            >
+              {isReextracting ? (
+                <>
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                  AI Processing...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="w-3 h-3" />
+                  Re-extract Data (High Precision)
+                </>
+              )}
+            </button>
+          </div>
           <button onClick={onClose} className="text-sm text-slate-600 bg-white border border-slate-200 hover:bg-slate-100 px-6 py-2 rounded-xl transition-colors font-medium shadow-sm">
             Close Viewer
           </button>
@@ -219,24 +241,100 @@ export default function InvoicesPage() {
   const [ocrError, setOcrError] = useState("");
   const [dragOver, setDragOver] = useState(false);
   const [viewingInvoice, setViewingInvoice] = useState(null);
+  const [reextractingId, setReextractingId] = useState(null);
+  const [stats, setStats] = useState(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 15;
   const fileInputRef = useRef(null);
 
-  // Fetch real invoices from DB on mount
   useEffect(() => {
-    fetch("/api/invoices")
-      .then(r => r.json())
-      .then(data => {
+    const loadInvoices = async () => {
+      try {
+        const r = await fetch("/api/invoices");
+        const data = await r.json();
         if (!data.error) setInvoices(data);
-      })
-      .catch(console.error);
+      } catch (e) {
+        console.error("Failed to load invoices:", e);
+      }
+    };
+    const loadStats = async () => {
+      try {
+        const r = await fetch("/api/invoices/stats");
+        const data = await r.json();
+        if (!data.error) setStats(data);
+      } catch (e) {
+        console.error("Failed to load stats:", e);
+      }
+    };
+    loadInvoices();
+    loadStats();
+
+    // Auto-detect missing line items on load
+    const triggerAutoDetect = async () => {
+      try {
+        const r = await fetch("/api/invoices/auto-detect");
+        const data = await r.json();
+        if (data.ids && data.ids.length > 0) {
+          console.log(`[Auto-detect] Found ${data.ids.length} invoices to re-extract.`);
+          // Trigger sequentially to avoid overloading
+          for (const id of data.ids) {
+            await handleReextract(id, false); // isManual: false
+          }
+        }
+      } catch (e) {
+        console.error("Auto-detect failed:", e);
+      }
+    };
+
+    // Delay auto-detect slightly to prioritize initial load
+    const timeout = setTimeout(triggerAutoDetect, 2000);
+    return () => clearTimeout(timeout);
   }, []);
+
+  // Polling for processing status
+  useEffect(() => {
+    const isProcessing = invoices.some(inv => inv.reextract_status === 'processing');
+    if (!isProcessing) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const [invRes, statsRes] = await Promise.all([
+          fetch("/api/invoices"),
+          fetch("/api/invoices/stats")
+        ]);
+        const invData = await invRes.json();
+        const statsData = await statsRes.json();
+
+        if (!invData.error) {
+          const stillProcessing = invData.some(inv => inv.reextract_status === 'processing');
+          setInvoices(invData);
+          if (!stillProcessing) clearInterval(interval);
+        }
+        if (!statsData.error) setStats(statsData);
+      } catch (e) {
+        console.error("Polling failed:", e);
+      }
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [invoices]);
+
+  // Reset to page 1 when filter/search changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, activeFilter]);
 
   const filters = ["All", "Verified", "Pending", "Error"];
   const filtered = invoices.filter(inv => {
-    const matchSearch = inv.seller?.toLowerCase().includes(search.toLowerCase()) || inv.id?.includes(search);
+    const matchSearch = inv.seller?.toLowerCase().includes(search.toLowerCase()) ||
+      inv.id?.toLowerCase().includes(search.toLowerCase()) ||
+      inv.invoice_number?.toLowerCase().includes(search.toLowerCase());
     const matchFilter = activeFilter === "All" || inv.status === activeFilter;
     return matchSearch && matchFilter;
   });
+
+  const totalPages = Math.ceil(filtered.length / itemsPerPage);
+  const paginatedInvoices = filtered.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
   const toggleSelect = (id) => {
     setSelected(s => s.includes(id) ? s.filter(x => x !== id) : [...s, id]);
@@ -312,6 +410,51 @@ export default function InvoicesPage() {
     }
   };
 
+  const handleReextract = async (id, isManual = false) => {
+    if (!id) return;
+    console.log(`[Re-extract] Starting ID: ${id}, Manual: ${isManual}`);
+
+    setReextractingId(id);
+    try {
+      const res = await fetch("/api/invoices/reextract", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id })
+      });
+
+      if (!res.ok) throw new Error(`HTTP Error ${res.status}`);
+
+      const data = await res.json();
+      if (data.success) {
+        console.log(`[Re-extract] Successfully extracted ${id}`);
+        // Update local state by finding and replacing the updated invoice
+        setInvoices(prev => prev.map(inv =>
+          inv.id === id ? { ...inv, ...data.invoice, raw_json: JSON.stringify(data.invoice) } : inv
+        ));
+
+        setViewingInvoice(prev => {
+          if (prev && prev.id === id) {
+            return { ...prev, ...data.invoice, raw_json: JSON.stringify(data.invoice) };
+          }
+          return prev;
+        });
+      } else {
+        const errMsg = data.error || "Unknown error";
+        console.error(`[Re-extract] Failed for ${id}: ${errMsg}`);
+        if (isManual) {
+          setOcrError("Re-extraction failed: " + errMsg);
+        }
+      }
+    } catch (e) {
+      console.error(`[Re-extract] Connection Error for ${id}:`, e.message);
+      if (isManual) {
+        setOcrError("Failed to connect to re-extraction API. Please check server status.");
+      }
+    } finally {
+      setReextractingId(null);
+    }
+  };
+
   const totalTax = invoices.filter(i => i.status === "Verified")
     .reduce((sum, i) => {
       const taxVal = typeof i.tax === 'string' ? parseFloat(i.tax.replace(/[^0-9.-]/g, "")) : Number(i.tax);
@@ -324,7 +467,14 @@ export default function InvoicesPage() {
       {ocrResult && <OcrResultModal result={ocrResult} onConfirm={handleConfirm} onClose={() => setOcrResult(null)} />}
 
       {/* View Data Modal */}
-      {viewingInvoice && <ViewInvoiceModal invoice={viewingInvoice} onClose={() => setViewingInvoice(null)} />}
+      {viewingInvoice && (
+        <ViewInvoiceModal
+          invoice={viewingInvoice}
+          isReextracting={reextractingId === viewingInvoice.id}
+          onReextract={(id) => handleReextract(id, true)}
+          onClose={() => setViewingInvoice(null)}
+        />
+      )}
 
       {/* Hidden file input */}
       <input ref={fileInputRef} type="file" accept="image/*,.pdf" className="hidden" onChange={handleFileInput} />
@@ -368,6 +518,61 @@ export default function InvoicesPage() {
           </div>
         ))}
       </div>
+
+      {/* Global Processing Banner */}
+      {stats && (stats.global.percentage < 100 || stats.reextraction.processing > 0) && (
+        <div className="bg-white border-2 border-blue-100 rounded-2xl p-6 shadow-sm space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center text-blue-600">
+                <RefreshCw className={`w-5 h-5 ${stats.reextraction.processing > 0 ? "animate-spin" : ""}`} />
+              </div>
+              <div>
+                <h3 className="font-bold text-slate-900 leading-none">AI Intelligence Pipeline</h3>
+                <p className="text-xs text-slate-500 mt-1">Real-time extraction & data enrichment in progress</p>
+              </div>
+            </div>
+            {stats.reextraction.processing > 0 && (
+              <span className="flex items-center gap-1.5 text-[10px] font-bold px-2 py-1 bg-blue-600 text-white rounded-lg animate-pulse">
+                <Loader2 className="w-3 h-3 animate-spin" />
+                {stats.reextraction.processing} ACTIVE TASKS
+              </span>
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 gap-8 pt-2">
+            {/* Library Progress */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-slate-600 font-medium">Global Library Extraction (10k+)</span>
+                <span className="text-blue-600 font-bold">{stats.global.percentage}%</span>
+              </div>
+              <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-blue-400 to-blue-600 transition-all duration-1000 ease-in-out"
+                  style={{ width: `${stats.global.percentage}%` }}
+                />
+              </div>
+              <p className="text-[10px] text-slate-400 text-right">{stats.global.completed} / {stats.global.total} processed</p>
+            </div>
+
+            {/* Re-extraction Progress */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-slate-600 font-medium">Re-extraction Backlog (Missing Lines)</span>
+                <span className="text-emerald-600 font-bold">{stats.reextraction.percentage}%</span>
+              </div>
+              <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-emerald-400 to-emerald-600 transition-all duration-1000 ease-in-out"
+                  style={{ width: `${stats.reextraction.percentage}%` }}
+                />
+              </div>
+              <p className="text-[10px] text-slate-400 text-right">{stats.reextraction.completed} / {stats.reextraction.total_needed + stats.reextraction.completed} re-extracted</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Upload drop zone */}
       <div
@@ -467,7 +672,7 @@ export default function InvoicesPage() {
             </tr>
           </thead>
           <tbody>
-            {filtered.map(inv => (
+            {paginatedInvoices.map(inv => (
               <tr key={inv.id} className="border-b border-slate-50 hover:bg-slate-50/60 transition-colors">
                 <td className="py-3 px-4">
                   <input type="checkbox" className="rounded" checked={selected.includes(inv.id)} onChange={() => toggleSelect(inv.id)} />
@@ -489,12 +694,29 @@ export default function InvoicesPage() {
                 </td>
                 <td className="py-3 px-4 text-slate-500">{inv.date}</td>
                 <td className="py-3 px-4">
-                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${inv.status === "Verified" ? "status-success" :
-                    inv.status === "Error" ? "status-error" : "status-warning"
-                    }`}>{inv.status}</span>
+                  {inv.reextract_status === 'processing' ? (
+                    <span className="flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full font-medium bg-blue-50 text-blue-600 border border-blue-100 animate-pulse">
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                      AI Processing...
+                    </span>
+                  ) : (
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${inv.status === "Verified" ? "status-success" :
+                      inv.status === "Error" ? "status-error" : "status-warning"
+                      }`}>{inv.status}</span>
+                  )}
                 </td>
                 <td className="py-3 px-4">
                   <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => handleReextract(inv.id, true)}
+                      disabled={reextractingId === inv.id || inv.reextract_status === 'processing'}
+                      title="Quick Re-extract"
+                      className={`p-1 rounded-lg transition-colors ${(reextractingId === inv.id || inv.reextract_status === 'processing') ? "bg-slate-100" : "hover:bg-blue-100"
+                        }`}
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${(reextractingId === inv.id || inv.reextract_status === 'processing') ? "text-blue-500 animate-spin" : "text-slate-400 hover:text-blue-600"
+                        }`} />
+                    </button>
                     <button onClick={() => setViewingInvoice(inv)} className="p-1 hover:bg-blue-100 rounded-lg transition-colors">
                       <Eye className="w-3.5 h-3.5 text-slate-400 hover:text-blue-600" />
                     </button>
@@ -508,11 +730,25 @@ export default function InvoicesPage() {
           </tbody>
         </table>
         <div className="px-5 py-3 bg-slate-50 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
-          <span>Showing {filtered.length} of {invoices.length} invoices</span>
+          <span>Showing {(currentPage - 1) * itemsPerPage + 1} to {Math.min(currentPage * itemsPerPage, filtered.length)} of {filtered.length} results</span>
           <div className="flex gap-2">
-            <button className="px-3 py-1 bg-white border border-slate-200 rounded-lg hover:bg-slate-100">Prev</button>
-            <button className="px-3 py-1 bg-blue-600 text-white rounded-lg">1</button>
-            <button className="px-3 py-1 bg-white border border-slate-200 rounded-lg hover:bg-slate-100">Next</button>
+            <button
+              disabled={currentPage === 1}
+              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+              className={`px-3 py-1 bg-white border border-slate-200 rounded-lg hover:bg-slate-100 transition-opacity ${currentPage === 1 ? 'opacity-50 cursor-not-allowed' : ''}`}
+            >
+              Prev
+            </button>
+            <div className="flex items-center px-2 font-medium">
+              Page {currentPage} of {totalPages || 1}
+            </div>
+            <button
+              disabled={currentPage === totalPages || totalPages === 0}
+              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+              className={`px-3 py-1 bg-white border border-slate-200 rounded-lg hover:bg-slate-100 transition-opacity ${currentPage === totalPages || totalPages === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
+            >
+              Next
+            </button>
           </div>
         </div>
       </div>

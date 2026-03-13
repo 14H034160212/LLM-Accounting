@@ -23,15 +23,18 @@ db.exec(`
     status TEXT,
     currency TEXT,
     raw_json TEXT,
-    image_url TEXT
+    image_url TEXT,
+    reextract_status TEXT DEFAULT 'pending'
   );
 `);
 
 try {
   db.exec("ALTER TABLE invoices ADD COLUMN image_url TEXT;");
-} catch (e) {
-  // column might already exist
-}
+} catch (e) { }
+
+try {
+  db.exec("ALTER TABLE invoices ADD COLUMN reextract_status TEXT DEFAULT 'pending';");
+} catch (e) { }
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS journals (
