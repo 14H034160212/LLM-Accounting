@@ -3,10 +3,45 @@ import db from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(req) {
     try {
-        const invoices = db.prepare('SELECT * FROM invoices ORDER BY date DESC').all();
-        return NextResponse.json(invoices);
+        const { searchParams } = new URL(req.url);
+        const page = parseInt(searchParams.get('page')) || 1;
+        const limit = parseInt(searchParams.get('limit')) || 20;
+        const search = searchParams.get('search') || '';
+        const filter = searchParams.get('filter') || 'All';
+        const offset = (page - 1) * limit;
+
+        let query = 'FROM invoices WHERE 1=1';
+        const params = [];
+
+        if (search) {
+            const pattern = `%${search}%`;
+            query += ' AND (seller LIKE ? OR id LIKE ? OR invoice_number LIKE ?)';
+            params.push(pattern, pattern, pattern);
+        }
+
+        if (filter !== 'All') {
+            query += ' AND status = ?';
+            params.push(filter);
+        }
+
+        // Get total count for this specific filter/search
+        const total = db.prepare(`SELECT COUNT(*) as total ${query}`).get(...params).total;
+
+        // Get paginated data
+        const invoices = db.prepare(`SELECT * ${query} ORDER BY date DESC, id DESC LIMIT ? OFFSET ?`)
+            .all(...params, limit, offset);
+
+        return NextResponse.json({
+            invoices,
+            pagination: {
+                total,
+                page,
+                limit,
+                totalPages: Math.ceil(total / limit)
+            }
+        });
     } catch (error) {
         console.error("Failed to fetch invoices:", error);
         return NextResponse.json({ error: "Failed to load invoices" }, { status: 500 });

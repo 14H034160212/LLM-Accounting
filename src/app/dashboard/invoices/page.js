@@ -14,6 +14,89 @@ const typeColors = {
   "Credit Note": "text-teal-700 bg-teal-50 border-teal-200",
 };
 
+// ─── Memoized Header Stat Row ────────────────────────────────────────────────
+import { memo } from "react";
+
+const StatCard = memo(({ label, value, sub, icon: Icon, color }) => (
+  <div className="tech-card p-4 h-[130px] flex flex-col justify-between">
+    <div className="flex items-start justify-between">
+      <div className={`w-9 h-9 rounded-xl bg-gradient-to-br ${color} flex items-center justify-center`}>
+        <Icon className="w-4 h-4 text-white" />
+      </div>
+    </div>
+    <div>
+      <div className="h-8 flex items-baseline">
+        <p className="text-2xl font-bold text-slate-900 leading-none">
+          {value === "..." ? (
+            <span className="inline-block w-12 h-6 bg-slate-100 animate-pulse rounded" />
+          ) : value}
+        </p>
+      </div>
+      <p className="text-xs text-slate-500 font-medium mt-1 uppercase tracking-wider">{label}</p>
+      <p className="text-[10px] text-slate-400 mt-0.5">{sub}</p>
+    </div>
+  </div>
+));
+StatCard.displayName = "StatCard";
+
+// ─── Memoized Invoice Row ──────────────────────────────────────────────────
+const InvoiceRow = memo(({ inv, selected, onToggle, onView, onReextract, isReextracting }) => (
+  <tr className="border-b border-slate-50 hover:bg-slate-50/60 transition-colors h-[57px]">
+    <td className="py-3 px-4">
+      <input type="checkbox" className="rounded" checked={selected} onChange={onToggle} />
+    </td>
+    <td className="py-3 px-4 font-mono text-xs text-slate-500">{inv.id}</td>
+    <td className="py-3 px-4">
+      <div className="font-medium text-slate-800 max-w-[160px] truncate">{inv.seller}</div>
+    </td>
+    <td className="py-3 px-4">
+      <span className={`text-xs px-2 py-0.5 rounded-full border ${typeColors[inv.type] || "text-slate-600 bg-slate-50 border-slate-200"}`}>
+        {inv.type}
+      </span>
+    </td>
+    <td className="py-3 px-4 text-right font-semibold text-slate-900">
+      {typeof inv.amount === 'number' ? `$${inv.amount.toFixed(2)}` : inv.amount}
+    </td>
+    <td className="py-3 px-4 text-right text-slate-600">
+      {typeof inv.tax === 'number' ? `$${inv.tax.toFixed(2)}` : inv.tax}
+    </td>
+    <td className="py-3 px-4 text-slate-500">{inv.date}</td>
+    <td className="py-3 px-4">
+      {inv.reextract_status === 'processing' ? (
+        <span className="flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full font-medium bg-blue-50 text-blue-600 border border-blue-100 animate-pulse">
+          <Loader2 className="w-3 h-3 animate-spin" />
+          AI Processing...
+        </span>
+      ) : (
+        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${inv.status === "Verified" ? "status-success" :
+          inv.status === "Error" ? "status-error" : "status-warning"
+          }`}>{inv.status}</span>
+      )}
+    </td>
+    <td className="py-3 px-4">
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => onReextract(inv.id, true)}
+          disabled={isReextracting || inv.reextract_status === 'processing'}
+          title="Quick Re-extract"
+          className={`p-1 rounded-lg transition-colors ${(isReextracting || inv.reextract_status === 'processing') ? "bg-slate-100" : "hover:bg-blue-100"
+            }`}
+        >
+          <RefreshCw className={`w-3.5 h-3.5 ${(isReextracting || inv.reextract_status === 'processing') ? "text-blue-500 animate-spin" : "text-slate-400 hover:text-blue-600"
+            }`} />
+        </button>
+        <button onClick={() => onView(inv)} className="p-1 hover:bg-blue-100 rounded-lg transition-colors">
+          <Eye className="w-3.5 h-3.5 text-slate-400 hover:text-blue-600" />
+        </button>
+        <button className="p-1 hover:bg-red-100 rounded-lg transition-colors">
+          <Trash2 className="w-3.5 h-3.5 text-slate-400 hover:text-red-500" />
+        </button>
+      </div>
+    </td>
+  </tr>
+));
+InvoiceRow.displayName = "InvoiceRow";
+
 // ─── OCR Result Modal ──────────────────────────────────────────────────────────
 function OcrResultModal({ result, onConfirm, onClose }) {
   const inv = result.invoice;
@@ -243,98 +326,115 @@ export default function InvoicesPage() {
   const [viewingInvoice, setViewingInvoice] = useState(null);
   const [reextractingId, setReextractingId] = useState(null);
   const [stats, setStats] = useState(null);
+  const [optimizationStatus, setOptimizationStatus] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 15;
+  const [pagination, setPagination] = useState({ total: 0, totalPages: 1 });
   const fileInputRef = useRef(null);
 
+  const loadInvoices = async () => {
+    try {
+      const params = new URLSearchParams({
+        page: currentPage,
+        limit: itemsPerPage,
+        search,
+        filter: activeFilter
+      });
+      const r = await fetch(`/api/invoices?${params}`);
+      const data = await r.json();
+      if (data.invoices) {
+        setInvoices(data.invoices);
+        setPagination(data.pagination);
+      }
+    } catch (e) {
+      console.error("Failed to load invoices:", e);
+    }
+  };
+
+  const loadStats = async () => {
+    try {
+      const r = await fetch("/api/invoices/stats");
+      const data = await r.json();
+      if (!data.error) setStats(data);
+    } catch (e) {
+      console.error("Failed to load stats:", e);
+    }
+  };
+
   useEffect(() => {
-    const loadInvoices = async () => {
+    const loadOptimizationStatus = async () => {
       try {
-        const r = await fetch("/api/invoices");
+        const r = await fetch("/api/optimization/status");
         const data = await r.json();
-        if (!data.error) setInvoices(data);
+        if (data.success) setOptimizationStatus(data.data);
       } catch (e) {
-        console.error("Failed to load invoices:", e);
+        console.error("Failed to load optimization status:", e);
       }
     };
-    const loadStats = async () => {
-      try {
-        const r = await fetch("/api/invoices/stats");
-        const data = await r.json();
-        if (!data.error) setStats(data);
-      } catch (e) {
-        console.error("Failed to load stats:", e);
-      }
-    };
-    loadInvoices();
-    loadStats();
-
-    // Auto-detect missing line items on load
-    const triggerAutoDetect = async () => {
-      try {
-        const r = await fetch("/api/invoices/auto-detect");
-        const data = await r.json();
-        if (data.ids && data.ids.length > 0) {
-          console.log(`[Auto-detect] Found ${data.ids.length} invoices to re-extract.`);
-          // Trigger sequentially to avoid overloading
-          for (const id of data.ids) {
-            await handleReextract(id, false); // isManual: false
-          }
-        }
-      } catch (e) {
-        console.error("Auto-detect failed:", e);
-      }
-    };
-
-    // Delay auto-detect slightly to prioritize initial load
-    const timeout = setTimeout(triggerAutoDetect, 2000);
-    return () => clearTimeout(timeout);
+    loadOptimizationStatus();
+    const optInterval = setInterval(loadOptimizationStatus, 30000); // Poll every 30s
+    return () => clearInterval(optInterval);
   }, []);
 
-  // Polling for processing status
+  // Main data loader
   useEffect(() => {
-    const isProcessing = invoices.some(inv => inv.reextract_status === 'processing');
-    if (!isProcessing) return;
-
-    const interval = setInterval(async () => {
-      try {
-        const [invRes, statsRes] = await Promise.all([
-          fetch("/api/invoices"),
-          fetch("/api/invoices/stats")
-        ]);
-        const invData = await invRes.json();
-        const statsData = await statsRes.json();
-
-        if (!invData.error) {
-          const stillProcessing = invData.some(inv => inv.reextract_status === 'processing');
-          setInvoices(invData);
-          if (!stillProcessing) clearInterval(interval);
-        }
-        if (!statsData.error) setStats(statsData);
-      } catch (e) {
-        console.error("Polling failed:", e);
-      }
-    }, 5000);
-
-    return () => clearInterval(interval);
-  }, [invoices]);
+    loadInvoices();
+    loadStats();
+  }, [currentPage, search, activeFilter]);
 
   // Reset to page 1 when filter/search changes
   useEffect(() => {
     setCurrentPage(1);
   }, [search, activeFilter]);
 
-  const filters = ["All", "Verified", "Pending", "Error"];
-  const filtered = invoices.filter(inv => {
-    const matchSearch = inv.seller?.toLowerCase().includes(search.toLowerCase()) ||
-      inv.id?.toLowerCase().includes(search.toLowerCase()) ||
-      inv.invoice_number?.toLowerCase().includes(search.toLowerCase());
-    const matchFilter = activeFilter === "All" || inv.status === activeFilter;
-    return matchSearch && matchFilter;
-  });
+  // Initial Auto-detect
+  useEffect(() => {
+    const triggerAutoDetect = async () => {
+      try {
+        const r = await fetch("/api/invoices/auto-detect");
+        const data = await r.json();
+        if (data.ids && data.ids.length > 0) {
+          console.log(`[Auto-detect] Triggered for ${data.ids.length} invoices.`);
+        }
+      } catch (e) {
+        console.error("Auto-detect failed:", e);
+      }
+    };
+    const timeout = setTimeout(triggerAutoDetect, 3000);
+    return () => clearTimeout(timeout);
+  }, []);
 
-  const totalPages = Math.ceil(filtered.length / itemsPerPage);
-  const paginatedInvoices = filtered.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+  // Polling for processing status - using a ref to avoid dependency loops
+  const pollingRef = useRef(null);
+
+  useEffect(() => {
+    const isProcessing = invoices.some(inv => inv.reextract_status === 'processing');
+    const isGlobalProcessing = stats?.reextraction?.processing > 0;
+    
+    // Clear existing interval if we're not processing or if dependencies changed
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current);
+      pollingRef.current = null;
+    }
+
+    if (isProcessing || isGlobalProcessing) {
+      pollingRef.current = setInterval(async () => {
+        try {
+          await Promise.all([loadInvoices(), loadStats()]);
+        } catch (e) {
+          console.error("Polling failed:", e);
+        }
+      }, 10000); // 10s for even more stability
+    }
+
+    return () => {
+      if (pollingRef.current) clearInterval(pollingRef.current);
+    };
+  }, [invoices.length, stats?.reextraction?.processing]); // Only trigger if counts change
+
+  const totalPages = pagination.totalPages;
+  const paginatedInvoices = invoices;
+  const filters = ["All", "Verified", "Pending", "Error"];
 
   const toggleSelect = (id) => {
     setSelected(s => s.includes(id) ? s.filter(x => x !== id) : [...s, id]);
@@ -410,11 +510,16 @@ export default function InvoicesPage() {
     }
   };
 
+  // Handle re-extraction with granular state update
   const handleReextract = async (id, isManual = false) => {
     if (!id) return;
-    console.log(`[Re-extract] Starting ID: ${id}, Manual: ${isManual}`);
-
     setReextractingId(id);
+    
+    // Optimistically update the single row status to 'processing'
+    setInvoices(prev => prev.map(inv => 
+      inv.id === id ? { ...inv, reextract_status: 'processing' } : inv
+    ));
+
     try {
       const res = await fetch("/api/invoices/reextract", {
         method: "POST",
@@ -426,30 +531,25 @@ export default function InvoicesPage() {
 
       const data = await res.json();
       if (data.success) {
-        console.log(`[Re-extract] Successfully extracted ${id}`);
-        // Update local state by finding and replacing the updated invoice
+        // Targeted update of only the changed invoice
         setInvoices(prev => prev.map(inv =>
-          inv.id === id ? { ...inv, ...data.invoice, raw_json: JSON.stringify(data.invoice) } : inv
+          inv.id === id ? { ...inv, ...data.invoice, reextract_status: 'completed', raw_json: JSON.stringify(data.invoice) } : inv
         ));
 
-        setViewingInvoice(prev => {
-          if (prev && prev.id === id) {
-            return { ...prev, ...data.invoice, raw_json: JSON.stringify(data.invoice) };
-          }
-          return prev;
-        });
-      } else {
-        const errMsg = data.error || "Unknown error";
-        console.error(`[Re-extract] Failed for ${id}: ${errMsg}`);
-        if (isManual) {
-          setOcrError("Re-extraction failed: " + errMsg);
+        if (viewingInvoice?.id === id) {
+          setViewingInvoice(prev => ({ ...prev, ...data.invoice, raw_json: JSON.stringify(data.invoice) }));
         }
+      } else {
+        setInvoices(prev => prev.map(inv => 
+          inv.id === id ? { ...inv, reextract_status: 'failed' } : inv
+        ));
+        if (isManual) setOcrError("Re-extraction failed: " + (data.error || "Unknown error"));
       }
     } catch (e) {
-      console.error(`[Re-extract] Connection Error for ${id}:`, e.message);
-      if (isManual) {
-        setOcrError("Failed to connect to re-extraction API. Please check server status.");
-      }
+      setInvoices(prev => prev.map(inv => 
+        inv.id === id ? { ...inv, reextract_status: 'failed' } : inv
+      ));
+      if (isManual) setOcrError("Failed to connect to re-extraction API.");
     } finally {
       setReextractingId(null);
     }
@@ -501,78 +601,122 @@ export default function InvoicesPage() {
       {/* Summary cards */}
       <div className="grid grid-cols-4 gap-4">
         {[
-          { label: "Total Invoices", value: `${invoices.length}`, sub: "This month", icon: FileText, color: "from-blue-500 to-blue-600" },
-          { label: "Verified", value: `${invoices.filter(i => i.status === "Verified").length}`, sub: "GST claimable", icon: FileCheck, color: "from-green-500 to-emerald-600" },
-          { label: "GST Input Credits", value: `A$${totalTax.toFixed(2)}`, sub: "Claimable on BAS", icon: CheckCircle, color: "from-cyan-500 to-blue-500" },
-          { label: "Pending Review", value: `${invoices.filter(i => i.status !== "Verified").length}`, sub: "Needs attention", icon: AlertCircle, color: "from-amber-500 to-orange-500" },
-        ].map(({ label, value, sub, icon: Icon, color }) => (
-          <div key={label} className="tech-card p-4">
-            <div className="flex items-start justify-between mb-3">
-              <div className={`w-9 h-9 rounded-xl bg-gradient-to-br ${color} flex items-center justify-center`}>
-                <Icon className="w-4 h-4 text-white" />
-              </div>
-            </div>
-            <p className="text-xl font-bold text-slate-900">{value}</p>
-            <p className="text-xs text-slate-500 mt-0.5">{label}</p>
-            <p className="text-xs text-slate-400 mt-0.5">{sub}</p>
-          </div>
+          { label: "Total Invoices", value: invoices.length > 0 ? `${invoices.length}` : "...", sub: "This month", icon: FileText, color: "from-blue-500 to-blue-600" },
+          { label: "Verified", value: invoices.length > 0 ? `${invoices.filter(i => i.status === "Verified").length}` : "...", sub: "GST claimable", icon: FileCheck, color: "from-green-500 to-emerald-600" },
+          { label: "GST Input Credits", value: invoices.length > 0 ? `A$${totalTax.toFixed(2)}` : "...", sub: "Claimable on BAS", icon: CheckCircle, color: "from-cyan-500 to-blue-500" },
+          { label: "Pending Review", value: invoices.length > 0 ? `${invoices.filter(i => i.status !== "Verified").length}` : "...", sub: "Needs attention", icon: AlertCircle, color: "from-amber-500 to-orange-500" },
+        ].map(props => (
+          <StatCard key={props.label} {...props} />
         ))}
       </div>
 
-      {/* Global Processing Banner */}
-      {stats && (stats.global.percentage < 100 || stats.reextraction.processing > 0) && (
-        <div className="bg-white border-2 border-blue-100 rounded-2xl p-6 shadow-sm space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center text-blue-600">
-                <RefreshCw className={`w-5 h-5 ${stats.reextraction.processing > 0 ? "animate-spin" : ""}`} />
+      {/* AI Intelligence Pipeline - Stable Layout Container */}
+      <div className="min-h-[200px] transition-all duration-300">
+        {stats && (stats.global.percentage < 100 || stats.reextraction.processing > 0) ? (
+          <div className="bg-white border-2 border-blue-100 rounded-2xl p-6 shadow-sm space-y-4 animate-in fade-in slide-in-from-top-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center text-blue-600">
+                  <RefreshCw className={`w-5 h-5 ${stats.reextraction.processing > 0 ? "animate-spin" : ""}`} />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-900 leading-none">AI Intelligence Pipeline</h3>
+                  <p className="text-xs text-slate-500 mt-1">Real-time extraction & data enrichment in progress</p>
+                </div>
               </div>
-              <div>
-                <h3 className="font-bold text-slate-900 leading-none">AI Intelligence Pipeline</h3>
-                <p className="text-xs text-slate-500 mt-1">Real-time extraction & data enrichment in progress</p>
+              {stats.reextraction.processing > 0 && (
+                <span className="flex items-center gap-1.5 text-[10px] font-bold px-2 py-1 bg-blue-600 text-white rounded-lg animate-pulse">
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                  {stats.reextraction.processing} ACTIVE TASKS
+                </span>
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 gap-8 pt-2">
+              {/* Library Progress */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-600 font-medium">Global Library Extraction (10k+)</span>
+                  <span className="text-blue-600 font-bold">{stats.global.percentage}%</span>
+                </div>
+                <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-blue-400 to-blue-600 transition-all duration-1000 ease-in-out"
+                    style={{ width: `${stats.global.percentage}%` }}
+                  />
+                </div>
+                <p className="text-[10px] text-slate-400 text-right">{stats.global.completed} / {stats.global.total} processed</p>
+              </div>
+
+              {/* Re-extraction Progress */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-600 font-medium">Re-extraction Backlog (Missing Lines)</span>
+                  <span className="text-emerald-600 font-bold">{stats.reextraction.percentage}%</span>
+                </div>
+                <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-emerald-400 to-emerald-600 transition-all duration-1000 ease-in-out"
+                    style={{ width: `${stats.reextraction.percentage}%` }}
+                  />
+                </div>
+                <p className="text-[10px] text-slate-400 text-right">{stats.reextraction.completed} / {stats.reextraction.total_needed + stats.reextraction.completed} re-extracted</p>
               </div>
             </div>
-            {stats.reextraction.processing > 0 && (
-              <span className="flex items-center gap-1.5 text-[10px] font-bold px-2 py-1 bg-blue-600 text-white rounded-lg animate-pulse">
-                <Loader2 className="w-3 h-3 animate-spin" />
-                {stats.reextraction.processing} ACTIVE TASKS
-              </span>
+
+            {/* Model Optimization & Performance */}
+            {optimizationStatus && optimizationStatus.metrics && (
+              <div className="pt-4 border-t border-slate-50">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="w-3.5 h-3.5 text-blue-500" />
+                    <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">Model Optimization & Performance</span>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <span className="text-[10px] text-slate-400">Last Optimized: <span className="text-slate-600 font-semibold">{optimizationStatus.last_run}</span></span>
+                    <span className="text-[10px] text-slate-400">Trained Samples: <span className="text-slate-600 font-semibold">{optimizationStatus.last_trained}</span></span>
+                  </div>
+                </div>
+                <div className="grid grid-cols-4 gap-3">
+                  {[
+                    { label: "Total amount", key: "total" },
+                    { label: "Invoice Date", key: "date" },
+                    { label: "Seller ABN", key: "sellerABN" },
+                    { label: "Buyer Name", key: "buyer" }
+                  ].map(metric => {
+                    const m = optimizationStatus.metrics[metric.key];
+                    const f1 = m ? (m.f1 * 100).toFixed(1) : "0.0";
+                    return (
+                      <div key={metric.key} className="bg-slate-50/50 rounded-xl p-2.5 border border-slate-100">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-[10px] text-slate-500 font-medium">{metric.label}</span>
+                          <span className={`text-[10px] font-bold ${Number(f1) > 90 ? "text-green-600" : Number(f1) > 70 ? "text-blue-600" : "text-amber-600"}`}>
+                            {f1}% F1
+                          </span>
+                        </div>
+                        <div className="h-1 bg-slate-200 rounded-full overflow-hidden">
+                          <div
+                            className={`h-full transition-all duration-1000 ${Number(f1) > 90 ? "bg-green-500" : Number(f1) > 70 ? "bg-blue-500" : "bg-amber-500"}`}
+                            style={{ width: `${f1}%` }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
             )}
           </div>
-
-          <div className="grid grid-cols-2 gap-8 pt-2">
-            {/* Library Progress */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-slate-600 font-medium">Global Library Extraction (10k+)</span>
-                <span className="text-blue-600 font-bold">{stats.global.percentage}%</span>
-              </div>
-              <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-gradient-to-r from-blue-400 to-blue-600 transition-all duration-1000 ease-in-out"
-                  style={{ width: `${stats.global.percentage}%` }}
-                />
-              </div>
-              <p className="text-[10px] text-slate-400 text-right">{stats.global.completed} / {stats.global.total} processed</p>
-            </div>
-
-            {/* Re-extraction Progress */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-slate-600 font-medium">Re-extraction Backlog (Missing Lines)</span>
-                <span className="text-emerald-600 font-bold">{stats.reextraction.percentage}%</span>
-              </div>
-              <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-gradient-to-r from-emerald-400 to-emerald-600 transition-all duration-1000 ease-in-out"
-                  style={{ width: `${stats.reextraction.percentage}%` }}
-                />
-              </div>
-              <p className="text-[10px] text-slate-400 text-right">{stats.reextraction.completed} / {stats.reextraction.total_needed + stats.reextraction.completed} re-extracted</p>
+        ) : !stats ? (
+          /* Placeholder to maintain layout while stats load */
+          <div className="bg-slate-50 border-2 border-slate-100 rounded-2xl p-6 h-[220px] shadow-sm flex items-center justify-center">
+            <div className="flex flex-col items-center gap-2 opacity-30">
+              <Loader2 className="w-6 h-6 animate-spin" />
+              <p className="text-xs font-bold font-mono">INITIALIZING PIPELINE...</p>
             </div>
           </div>
-        </div>
-      )}
+        ) : null}
+      </div>
 
       {/* Upload drop zone */}
       <div
@@ -673,64 +817,20 @@ export default function InvoicesPage() {
           </thead>
           <tbody>
             {paginatedInvoices.map(inv => (
-              <tr key={inv.id} className="border-b border-slate-50 hover:bg-slate-50/60 transition-colors">
-                <td className="py-3 px-4">
-                  <input type="checkbox" className="rounded" checked={selected.includes(inv.id)} onChange={() => toggleSelect(inv.id)} />
-                </td>
-                <td className="py-3 px-4 font-mono text-xs text-slate-500">{inv.id}</td>
-                <td className="py-3 px-4">
-                  <div className="font-medium text-slate-800 max-w-[160px] truncate">{inv.seller}</div>
-                </td>
-                <td className="py-3 px-4">
-                  <span className={`text-xs px-2 py-0.5 rounded-full border ${typeColors[inv.type] || "text-slate-600 bg-slate-50 border-slate-200"}`}>
-                    {inv.type}
-                  </span>
-                </td>
-                <td className="py-3 px-4 text-right font-semibold text-slate-900">
-                  {typeof inv.amount === 'number' ? `$${inv.amount.toFixed(2)}` : inv.amount}
-                </td>
-                <td className="py-3 px-4 text-right text-slate-600">
-                  {typeof inv.tax === 'number' ? `$${inv.tax.toFixed(2)}` : inv.tax}
-                </td>
-                <td className="py-3 px-4 text-slate-500">{inv.date}</td>
-                <td className="py-3 px-4">
-                  {inv.reextract_status === 'processing' ? (
-                    <span className="flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full font-medium bg-blue-50 text-blue-600 border border-blue-100 animate-pulse">
-                      <Loader2 className="w-3 h-3 animate-spin" />
-                      AI Processing...
-                    </span>
-                  ) : (
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${inv.status === "Verified" ? "status-success" :
-                      inv.status === "Error" ? "status-error" : "status-warning"
-                      }`}>{inv.status}</span>
-                  )}
-                </td>
-                <td className="py-3 px-4">
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => handleReextract(inv.id, true)}
-                      disabled={reextractingId === inv.id || inv.reextract_status === 'processing'}
-                      title="Quick Re-extract"
-                      className={`p-1 rounded-lg transition-colors ${(reextractingId === inv.id || inv.reextract_status === 'processing') ? "bg-slate-100" : "hover:bg-blue-100"
-                        }`}
-                    >
-                      <RefreshCw className={`w-3.5 h-3.5 ${(reextractingId === inv.id || inv.reextract_status === 'processing') ? "text-blue-500 animate-spin" : "text-slate-400 hover:text-blue-600"
-                        }`} />
-                    </button>
-                    <button onClick={() => setViewingInvoice(inv)} className="p-1 hover:bg-blue-100 rounded-lg transition-colors">
-                      <Eye className="w-3.5 h-3.5 text-slate-400 hover:text-blue-600" />
-                    </button>
-                    <button onClick={() => setInvoices(prev => prev.filter(i => i.id !== inv.id))} className="p-1 hover:bg-red-100 rounded-lg transition-colors">
-                      <Trash2 className="w-3.5 h-3.5 text-slate-400 hover:text-red-500" />
-                    </button>
-                  </div>
-                </td>
-              </tr>
+              <InvoiceRow 
+                key={inv.id} 
+                inv={inv} 
+                selected={selected.includes(inv.id)}
+                onToggle={() => toggleSelect(inv.id)}
+                onView={setViewingInvoice}
+                onReextract={handleReextract}
+                isReextracting={reextractingId === inv.id}
+              />
             ))}
           </tbody>
         </table>
         <div className="px-5 py-3 bg-slate-50 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
-          <span>Showing {(currentPage - 1) * itemsPerPage + 1} to {Math.min(currentPage * itemsPerPage, filtered.length)} of {filtered.length} results</span>
+          <span>Showing {(currentPage - 1) * itemsPerPage + 1} to {Math.min(currentPage * itemsPerPage, pagination.total)} of {pagination.total} results</span>
           <div className="flex gap-2">
             <button
               disabled={currentPage === 1}

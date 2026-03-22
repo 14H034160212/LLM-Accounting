@@ -1,15 +1,23 @@
 import db from '@/lib/db';
-import { v4 as uuidv4 } from 'uuid';
 
 export async function POST(req) {
     try {
-        const { invoice_id, summary, debit_account, credit_account, amount, date } = await req.json();
+        const body = await req.json();
+        // Support both "confirm existing journal" (journal_id + status) and "create new journal" flows
+        const { journal_id, status, invoice_id, summary, debit_account, credit_account, amount, date } = body;
 
+        // ── Confirm existing journal (status update) ──────────────────────────
+        if (journal_id && status) {
+            db.prepare("UPDATE journals SET status = ? WHERE id = ?").run(status, journal_id);
+            return Response.json({ success: true, message: `Journal ${journal_id} updated to ${status}.` });
+        }
+
+        // ── Create new journal ────────────────────────────────────────────────
         if (!invoice_id || !debit_account || !credit_account || !amount) {
             return Response.json({ error: "Missing required fields" }, { status: 400 });
         }
 
-        const journalId = `jrnl-${uuidv4().substring(0, 8)}`;
+        const journalId = `jrnl-${crypto.randomUUID().substring(0, 8)}`;
 
         const stmt = db.prepare(`
       INSERT INTO journals (id, invoice_id, summary, debit_account, credit_account, amount, date, status, ai_generated)

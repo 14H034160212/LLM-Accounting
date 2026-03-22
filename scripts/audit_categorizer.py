@@ -1,63 +1,80 @@
 import sqlite3
+import pandas as pd
 import json
 from pathlib import Path
 
 # Config
 DB_PATH = Path('/data/qbao775/llm-accounting/data/data.db')
 
-def categorize_invoices():
-    """Simulate an AI agent categorizing raw invoices into Audit-Ready Ledgers."""
+def analyze_audit():
+    """Consolidated audit analysis including anomalies and categories."""
     try:
         conn = sqlite3.connect(DB_PATH)
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
+        df = pd.read_sql_query("SELECT id, seller, amount, date FROM invoices WHERE reextract_status = 'completed'", conn)
         
-        # Fetch up to 50 recent uncategorized invoices
-        cursor.execute("SELECT id, invoice_id, seller_name, amount, date FROM invoices ORDER BY id DESC LIMIT 50")
-        rows = cursor.fetchall()
-        
-        categories = {
-            "Operating Expenses (OpEx)": [],
-            "Capital Expenditures (CapEx)": [],
-            "Cost of Goods Sold (COGS)": [],
-            "Unclassified / Flagged for Review": []
-        }
-
-        # Simple heuristic + keyword mapping (simulating an LLM classification pass for speed)
-        for row in rows:
-            seller = (row['seller_name'] or "").upper()
-            amount = float(row['amount'] or 0)
-            
-            item = {
-                "id": row['invoice_id'],
-                "seller": row['seller_name'],
-                "amount": amount,
-                "date": row['date']
-            }
-
-            if amount > 5000:
-                categories["Capital Expenditures (CapEx)"].append(item)
-            elif any(keyword in seller for keyword in ["LCO", "TECH", "SOFTWARE", "CLOUD"]):
-                categories["Operating Expenses (OpEx)"].append(item)
-            elif any(keyword in seller for keyword in ["SUPPLY", "LOGISTICS", "FREIGHT"]):
-                categories["Cost of Goods Sold (COGS)"].append(item)
-            else:
-                categories["Unclassified / Flagged for Review"].append(item)
-
+        # Also get journals context
+        journals_df = pd.read_sql_query("SELECT * FROM journals", conn)
         conn.close()
 
-        # Summarize
-        summary = {k: len(v) for k, v in categories.items()}
-        
+        if len(df) < 5:
+            return {"status": "insufficient_data", "count": len(df)}
+
+        df['amount'] = pd.to_numeric(df['amount'], errors='coerce')
+        df['date'] = pd.to_datetime(df['date'], errors='coerce')
+        df = df.dropna(subset=['amount', 'date'])
+
+        alerts = []
+
+        # 1. Price Outliers per Seller
+        for seller in df['seller'].unique():
+            if not seller: continue
+            seller_df = df[df['seller'] == seller]
+            if len(seller_df) >= 3:
+                mean = seller_df['amount'].mean()
+                std = seller_df['amount'].std()
+                outliers = seller_df[seller_df['amount'] > (mean + 2 * std)]
+                for _, row in outliers.iterrows():
+                    alerts.append({
+                        "type": "Price Anomaly",
+                        "severity": "High" if row['amount'] > (mean + 3 * std) else "Medium",
+                        "description": f"Invoice from {seller} for ${row['amount']:.2f} is significantly above average.",
+                        "invoice_id": row['id']
+                    })
+
+        # 2. Duplicate Detection (Same seller, same amount, same date)
+        duplicates = df[df.duplicated(subset=['seller', 'amount', 'date'], keep=False)]
+        for _, row in duplicates.iterrows():
+            # Avoid adding multiple alerts for the same pair
+            alerts.append({
+                "type": "Duplicate Risk",
+                "severity": "High",
+                "description": f"Potential duplicate from {row['seller']} on {row['date'].strftime('%Y-%m-%d')}.",
+                "invoice_id": row['id']
+            })
+
+        # 3. Vendor Concentration
+        total_spend = df['amount'].sum()
+        if total_spend > 0:
+            vendor_spend = df.groupby('seller')['amount'].sum().sort_values(ascending=False)
+            top_vendor = vendor_spend.index[0]
+            concentration = (vendor_spend.iloc[0] / total_spend) * 100
+            if concentration > 40:
+                alerts.append({
+                    "type": "Risk Concentration",
+                    "severity": "Medium",
+                    "description": f"High reliance on {top_vendor} ({concentration:.1f}% of total spend).",
+                    "invoice_id": None
+                })
+
         return {
             "status": "success",
-            "summary": summary,
-            "details": categories
+            "total_documents": len(df),
+            "alerts": alerts[:15]
         }
 
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
 if __name__ == "__main__":
-    result = categorize_invoices()
+    result = analyze_audit()
     print(json.dumps(result, indent=2))

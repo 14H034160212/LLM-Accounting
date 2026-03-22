@@ -4,7 +4,7 @@ import db from "@/lib/db";
 import { getInternalBusinessContext } from "@/lib/context_builder";
 
 const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || "http://localhost:11437";
-const OLLAMA_MODEL = process.env.OLLAMA_MODEL || "qwen3-vl";
+const OLLAMA_MODEL = process.env.OLLAMA_MODEL || "llama3:8b";
 
 class BaseAgent {
     constructor(name, prompt) {
@@ -15,7 +15,7 @@ class BaseAgent {
     async getResponse(messages, additionalContext = "") {
         const fullPrompt = this.prompt + additionalContext;
         const ollamaMessages = messages.map((m) => ({
-            role: m.role === "ai" ? "assistant" : "user",
+            role: m.role === "assistant" || m.role === "ai" ? "assistant" : "user",
             content: m.content,
         }));
 
@@ -26,7 +26,7 @@ class BaseAgent {
                 model: OLLAMA_MODEL,
                 messages: [{ role: "system", content: fullPrompt }, ...ollamaMessages],
                 stream: false,
-                options: { temperature: 0.7, num_predict: 1024 }
+                options: { temperature: 0.2, num_predict: 2048 }
             }),
         });
 
@@ -55,17 +55,24 @@ export class MarketResearchAgent extends BaseAgent {
             return await this.getResponse(messages, contextString + getInternalBusinessContext());
         } catch (err) {
             console.error("Market Agent Error:", err);
-            return "I encountered an error accessing market data.";
+            return "I encountered an error accessing market data. " + getInternalBusinessContext();
         }
     }
 }
 
 export class AccountingAgent extends BaseAgent {
     constructor() {
-        super("Accounting Specialist", `You are a senior Accountant for AU/NZ SMEs. Focus on internal records, compliance, and benchmarking.
-When you identify an unposted transaction or invoice, propose a journal entry in this format:
-[PROPOSE_JOURNAL: {"summary": "...", "debit_account": "...", "credit_account": "...", "amount": 0.00}]
-Ask the user to 'Confirm and Sync' to commit these to the official records.`);
+        super("Accounting Specialist", `You are a senior Strategic Accountant for AU/NZ SMEs. 
+You have access to the business's real-time financial health, vendor spend, and processing status via the provided EXECUTIVE SUMMARY.
+
+Your goals:
+1. Answer specific questions about spend, revenue, and profit using the data provided.
+2. Provide strategic advice (e.g., vendor consolidation if spend is high on one vendor).
+3. If the user asks about invoices not yet in journals, explain the 'AI Extraction Pipeline Status'.
+4. For unposted transactions, propose a journal entry in this format:
+   [PROPOSE_JOURNAL: {"summary": "...", "debit_account": "...", "credit_account": "...", "amount": 0.00}]
+
+Always be professional, data-driven, and focused on AU/NZ compliance.`);
     }
 
     async run(messages) {
