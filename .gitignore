@@ -47,3 +47,4 @@ data/chroma_db/
 data/data.db
 .claude/
 public/uploads/
+public/fatura_images
